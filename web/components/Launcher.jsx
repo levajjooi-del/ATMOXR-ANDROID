@@ -191,7 +191,11 @@ export default function Launcher() {
         if (gameRef.current) {
           postGame({
             type: 'atmoxr-shoot-hand',
-            results: { multiHandLandmarks: r.multiHandLandmarks || [], multiHandedness: r.multiHandedness || [] },
+            results: {
+              multiHandLandmarks: r.multiHandLandmarks || [],
+              multiHandedness: r.multiHandedness || [],
+              atmoxrHandOverlay: r.atmoxrHandOverlay,
+            },
           });
         }
       },
@@ -663,6 +667,11 @@ export default function Launcher() {
       <div className="panel-stage">{renderGroup('L')}{renderGroup('R')}</div>
       <canvas ref={canvasLRef} className="hands-canvas hands-l" />
       <canvas ref={canvasRRef} className="hands-canvas hands-r" />
+      <div className="cardboard-optics" aria-hidden="true">
+        <span className="cardboard-lens cardboard-lens-left" />
+        <span className="cardboard-lens cardboard-lens-right" />
+        <span className="cardboard-divider" />
+      </div>
 
       {game && (
         <div className="game-overlay">

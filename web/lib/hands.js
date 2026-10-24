@@ -7,13 +7,12 @@
    - Inferência e desenho adaptativos para poupar CPU/FPS
    ============================================================ */
 
-const HAND_CONNECTIONS = [
-  [0, 1], [1, 2], [2, 3], [3, 4],
-  [0, 5], [5, 6], [6, 7], [7, 8],
-  [5, 9], [9, 10], [10, 11], [11, 12],
-  [9, 13], [13, 14], [14, 15], [15, 16],
-  [13, 17], [17, 18], [18, 19], [19, 20],
-  [0, 17],
+const FINGER_LANDMARKS = [
+  [1, 2, 3, 4],       // polegar
+  [5, 6, 7, 8],       // indicador
+  [9, 10, 11, 12],    // médio
+  [13, 14, 15, 16],   // anelar
+  [17, 18, 19, 20],   // mindinho
 ];
 
 const GAIN_X = 1.12;
@@ -30,24 +29,72 @@ const MEDIAPIPE_VER = '0.4.1675469240';
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 const dist2d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
-function convexHull(points) {
-  const sorted = points.map(({ x, y }) => ({ x, y })).sort((a, b) => a.x - b.x || a.y - b.y);
-  if (sorted.length < 3) return sorted;
-  const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
-  const lower = [];
-  for (const point of sorted) {
-    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], point) <= 0) lower.pop();
-    lower.push(point);
+function normal2d(a, b) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const length = Math.hypot(dx, dy) || 1;
+  return { x: -dy / length, y: dx / length };
+}
+
+// Constrói duas bordas para cada dedo; assim a silhueta acompanha os dedos
+// individualmente, em vez de envolver a mão num casco convexo arredondado.
+function fingerSides(points) {
+  const left = [];
+  const right = [];
+  for (let i = 0; i < points.length; i++) {
+    let normal;
+    if (i === 0) {
+      normal = normal2d(points[0], points[1]);
+    } else if (i === points.length - 1) {
+      normal = normal2d(points[i - 1], points[i]);
+    } else {
+      const n1 = normal2d(points[i - 1], points[i]);
+      const n2 = normal2d(points[i], points[i + 1]);
+      normal = { x: (n1.x + n2.x) / 2, y: (n1.y + n2.y) / 2 };
+      const length = Math.hypot(normal.x, normal.y) || 1;
+      normal.x /= length;
+      normal.y /= length;
+    }
+    const next = points[Math.min(i + 1, points.length - 1)];
+    const width = i === points.length - 1 ? 5 : Math.max(7, dist2d(points[i], next) * 0.32);
+    left.push({ x: points[i].x + normal.x * width, y: points[i].y + normal.y * width });
+    right.push({ x: points[i].x - normal.x * width, y: points[i].y - normal.y * width });
   }
-  const upper = [];
-  for (let i = sorted.length - 1; i >= 0; i--) {
-    const point = sorted[i];
-    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], point) <= 0) upper.pop();
-    upper.push(point);
+  return { left, right };
+}
+
+function buildHandContour(points) {
+  if (!points || points.length < 21) return [];
+  const fingers = FINGER_LANDMARKS.map((ids) => fingerSides(ids.map((index) => points[index])));
+  const sidePairs = fingers.map((sides) => {
+    const averageX = (side) => side.reduce((sum, point) => sum + point.x, 0) / side.length;
+    return averageX(sides.left) < averageX(sides.right)
+      ? { left: sides.left, right: sides.right }
+      : { left: sides.right, right: sides.left };
+  });
+
+  const path = [];
+  const add = (point) => {
+    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return;
+    const last = path[path.length - 1];
+    if (!last || Math.hypot(last.x - point.x, last.y - point.y) > 1.5) path.push(point);
+  };
+  const addList = (side, reverse = false) => {
+    const list = reverse ? [...side].reverse() : side;
+    list.forEach(add);
+  };
+
+  add(points[0]);
+  addList(sidePairs[0].left);
+  addList(sidePairs[0].right, true);
+  for (let i = 1; i < sidePairs.length; i++) {
+    const current = sidePairs[i];
+    add(current.left[0]);
+    addList(current.left);
+    addList(current.right, true);
   }
-  lower.pop();
-  upper.pop();
-  return lower.concat(upper);
+  add(points[0]);
+  return path;
 }
 
 const swapLabel = (label) => {
@@ -223,6 +270,7 @@ export class HandTracker {
       ...results,
       multiHandedness: (results.multiHandedness || []).map(normalizeHandednessEntry),
     };
+    normalized.atmoxrHandOverlay = this._createGameOverlay(normalized.multiHandLandmarks || []);
     if (this.opts.onResults) this.opts.onResults(normalized);
 
     const uiActive = this.opts.isUiActive ? this.opts.isUiActive() : true;
@@ -261,6 +309,34 @@ export class HandTracker {
       }
       this._needsDraw = true;
     }
+  }
+
+  _createGameOverlay(landmarks) {
+    const width = this.canvasL.clientWidth || window.innerWidth || 1;
+    const height = this.canvasL.clientHeight || window.innerHeight || 1;
+    const sbs = !!this.opts.isSBS?.();
+    const rightOffset = sbs
+      ? (this.canvasR?.getBoundingClientRect().left || width)
+      : 0;
+    return {
+      sbs,
+      width,
+      height,
+      rightOffset,
+      hands: landmarks.map((hand) => {
+        const points = hand.map((landmark) => this._toScreen(landmark));
+        const handSize = dist2d(hand[0], hand[9]) || 0.0001;
+        const pinchRatio = dist2d(hand[4], hand[8]) / handSize;
+        return {
+          points,
+          pinch: pinchRatio < PINCH_ON,
+          cursor: {
+            x: (points[4].x + points[8].x) / 2,
+            y: (points[4].y + points[8].y) / 2,
+          },
+        };
+      }),
+    };
   }
 
   _pickActiveHand(landmarks, labels) {
@@ -460,71 +536,54 @@ export class HandTracker {
 
     const style = this.opts.getStyle ? this.opts.getStyle() : 'ghost';
     const hands = this._landmarks;
-    for (let handIndex = 0; handIndex < hands.length; handIndex++) {
-      const landmarks = hands[handIndex];
+    for (const landmarks of hands) {
       const points = landmarks.map((landmark) => this._toScreen(landmark));
-      const label = this._handLabels[handIndex];
-      const accent = label === 'Left' ? 'rgba(129, 247, 222, .95)' : 'rgba(213, 202, 255, .95)';
-
       if (style === 'points') {
-        context.fillStyle = accent;
+        context.fillStyle = '#27e8ff';
         for (const point of points) {
           context.beginPath(); context.arc(point.x, point.y, 3, 0, Math.PI * 2); context.fill();
         }
-      } else {
-        const neon = style === 'neon';
-        const hull = convexHull(points);
-        context.save();
-        context.lineCap = 'round';
-        context.lineJoin = 'round';
-        if (hull.length > 2) {
-          // Silhueta translúcida mais próxima das mãos-contorno do Quest.
-          context.beginPath();
-          const last = hull[hull.length - 1];
-          const first = hull[0];
-          context.moveTo((last.x + first.x) / 2, (last.y + first.y) / 2);
-          for (let i = 0; i < hull.length; i++) {
-            const point = hull[i];
-            const next = hull[(i + 1) % hull.length];
-            context.quadraticCurveTo(point.x, point.y, (point.x + next.x) / 2, (point.y + next.y) / 2);
-          }
-          context.closePath();
-          context.fillStyle = neon ? 'rgba(74, 207, 235, .09)' : 'rgba(230, 242, 255, .075)';
-          context.fill();
-          context.shadowColor = neon ? 'rgba(104, 234, 255, .78)' : accent;
-          context.shadowBlur = neon ? 12 : 8;
-          context.strokeStyle = neon ? 'rgba(116, 241, 255, .92)' : 'rgba(247, 250, 255, .82)';
-          context.lineWidth = 2.4;
-          context.stroke();
-        }
-        // Linhas internas discretas preservam a leitura dos dedos sem raio.
-        context.shadowBlur = 0;
-        context.strokeStyle = neon ? 'rgba(125, 232, 255, .55)' : 'rgba(241, 246, 255, .43)';
-        context.lineWidth = neon ? 2.1 : 1.7;
-        context.beginPath();
-        for (const [a, b] of HAND_CONNECTIONS) {
-          context.moveTo(points[a].x, points[a].y);
-          context.lineTo(points[b].x, points[b].y);
-        }
-        context.stroke();
-        context.fillStyle = neon ? 'rgba(187, 251, 255, .95)' : 'rgba(247, 250, 255, .85)';
-        for (const joint of [0, 4, 8, 12, 16, 20]) {
-          context.beginPath(); context.arc(points[joint].x, points[joint].y, joint === 0 ? 2.4 : 1.9, 0, Math.PI * 2); context.fill();
-        }
-        context.restore();
+        continue;
       }
+
+      const contour = buildHandContour(points);
+      if (contour.length < 3) continue;
+      context.save();
+      context.beginPath();
+      context.moveTo(contour[0].x, contour[0].y);
+      for (let i = 1; i < contour.length; i++) {
+        const previous = contour[i - 1];
+        const current = contour[i];
+        context.quadraticCurveTo(
+          previous.x,
+          previous.y,
+          (previous.x + current.x) / 2,
+          (previous.y + current.y) / 2,
+        );
+      }
+      const last = contour[contour.length - 1];
+      context.lineTo(last.x, last.y);
+      context.closePath();
+      context.lineCap = 'round';
+      context.lineJoin = 'round';
+      context.strokeStyle = '#27e8ff';
+      context.lineWidth = Math.max(2.2, Math.min(3.2, width / 260));
+      context.shadowColor = '#00dfff';
+      context.shadowBlur = style === 'neon' ? 8 : 5;
+      context.stroke();
+      context.restore();
     }
 
     // Sem feixe/laser: apenas um pequeno marcador no ponto real da pinça.
     if (this.cursor.seen && hands.length) {
       const { x, y } = this.cursor;
-      const radius = this.pinch ? 10 : 4;
+      const radius = this.pinch ? 8.5 : 4;
       context.save();
       if (this.pinch) {
-        context.fillStyle = 'rgba(215, 250, 245, .24)';
-        context.strokeStyle = 'rgba(255, 255, 255, .98)';
-        context.lineWidth = 2;
-        context.beginPath(); context.arc(x, y, radius, 0, Math.PI * 2); context.fill(); context.stroke();
+        context.fillStyle = '#27e8ff';
+        context.shadowColor = '#00dfff';
+        context.shadowBlur = 14;
+        context.beginPath(); context.arc(x, y, radius, 0, Math.PI * 2); context.fill();
       } else {
         context.fillStyle = 'rgba(255, 255, 255, .96)';
         context.shadowColor = 'rgba(155, 238, 255, .85)';

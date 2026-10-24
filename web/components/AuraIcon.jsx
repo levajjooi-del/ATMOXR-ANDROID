@@ -1,6 +1,16 @@
+/* eslint-disable @next/next/no-img-element */
 import React from 'react';
 
-/** Ícones vetoriais leves inspirados no conjunto Aura mostrado nas referências. */
+// Glifos extraídos dos PNGs Aura da referência enviada pelo usuário.
+// youtube reaproveita a TV Aura; câmera, ajuda, remoto e mensagens usam os nomes do pack.
+const auraAssets = {
+  browser: 'browser', calculator: 'calculator', calendar: 'calendar', camera: 'camera',
+  clock: 'clock', threads: 'threads', facebook: 'facebook', files: 'files', gallery: 'gallery',
+  help: 'help', instagram: 'instagram', remote: 'remote', settings: 'settings', store: 'store',
+  messages: 'messages', tv: 'tv', youtube: 'tv', whatsapp: 'whatsapp',
+};
+
+/** Ícones Aura da referência + vetores para apps que não têm glifo correspondente. */
 const paths = {
   browser: <><circle cx="24" cy="24" r="17" /><path d="M7.5 24h33M24 7c5 5 7.5 10.7 7.5 17S29 36 24 41M24 7c-5 5-7.5 10.7-7.5 17S19 36 24 41" /></>,
   calculator: <><rect x="9" y="6" width="30" height="36" rx="6" /><path d="M15 13h18v7H15zM16 27h2m5 0h2m5 0h2M16 34h2m5 0h2m5 0h2" strokeWidth="3.5" /></>,
@@ -40,6 +50,21 @@ const paths = {
 };
 
 export default function AuraIcon({ name, size = 24, className = '' }) {
+  const asset = auraAssets[name];
+  if (asset) {
+    return (
+      <img
+        className={`aura-icon aura-icon-image ${className}`.trim()}
+        width={size}
+        height={size}
+        src={`/aura-icons/${asset}-fg.png`}
+        alt=""
+        aria-hidden="true"
+        draggable="false"
+      />
+    );
+  }
+
   return (
     <svg
       className={`aura-icon ${className}`.trim()}

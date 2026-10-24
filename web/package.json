@@ -1,6 +1,6 @@
 {
   "name": "atmoxr-web",
-  "version": "4.1.0",
+  "version": "4.2.0",
   "private": true,
   "description": "ATMOXR — launcher VR/AR para Cardboard (Next.js + Three.js + MediaPipe)",
   "scripts": {
