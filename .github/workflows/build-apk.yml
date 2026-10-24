@@ -24,11 +24,12 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install SDK packages (API 34)
-        run: sdkmanager "platforms;android-34" "build-tools;34.0.0"
+      # Os runners ubuntu do GitHub já trazem o Android SDK (API 34) instalado.
+      - name: Check Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME/platforms"
+          ls "$ANDROID_HOME/build-tools"
 
       - name: Set up Gradle 8.7
         uses: gradle/actions/setup-gradle@v4
