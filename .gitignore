@@ -5,5 +5,10 @@
 local.properties
 *.apk
 
-# O index.html canônico fica na raiz; a cópia em assets é gerada no build (CI)
-app/src/main/assets/index.html
+# Os assets web são gerados no build (export do Next.js copiado pelo CI)
+app/src/main/assets/
+
+# Node / Next.js (projeto em web/)
+node_modules/
+web/.next/
+web/out/

@@ -64,13 +64,14 @@ jobs:
           tag_name: apk-latest
           name: "ATMOXR — APK mais recente"
           body: |
-            APK do **ATMOXR** gerado automaticamente a partir do `index.html` otimizado.
+            APK do **ATMOXR** gerado automaticamente do projeto `web/`
+            (Next.js + React + Three.js — base nova v4).
 
             📲 Baixe o arquivo **ATMOXR.apk** abaixo e instale no Android
             (pode ser necessário permitir "instalar de fontes desconhecidas").
 
-            Requer: Android 8+, câmera traseira, giroscópio e internet no primeiro uso
-            (as bibliotecas Three.js/MediaPipe são carregadas de CDN).
+            Requer: Android 8+, câmera traseira, giroscópio e internet
+            (o rastreamento de mãos usa o MediaPipe via CDN; Three.js já vai embutido).
           files: ATMOXR.apk
           fail_on_unmatched_files: true
           make_latest: true

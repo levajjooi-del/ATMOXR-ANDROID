@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>ShootTheDie — ATMOXR</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            font-family: sans-serif;
+        }
+
+        #game-container {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+
+        #start-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+            cursor: pointer;
+        }
+
+        #start-overlay h1 {
+            font-size: 1.8rem;
+            margin-bottom: 10px;
+        }
+
+        #start-overlay p {
+            font-size: 1rem;
+            opacity: 0.8;
+        }
+
+        #hud {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            color: #00ffcc;
+            font-size: 1.1rem;
+            font-weight: bold;
+            z-index: 10;
+            pointer-events: none;
+            text-shadow: 0 0 5px rgba(0,255,204,0.5);
+        }
+
+        /* HUD duplicado p/ o olho direito no modo Cardboard (SBS) */
+        #hud-r {
+            display: none;
+            position: absolute;
+            top: 15px;
+            left: calc(50% + 15px);
+            color: #00ffcc;
+            font-size: 1.1rem;
+            font-weight: bold;
+            z-index: 10;
+            pointer-events: none;
+            text-shadow: 0 0 5px rgba(0,255,204,0.5);
+        }
+        body.cardboard-on #hud-r { display: block; }
+
+        #btn-cardboard {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            z-index: 15;
+            background: rgba(0, 255, 204, 0.2);
+            border: 2px solid #00ffcc;
+            color: #00ffcc;
+            padding: 8px 15px;
+            font-weight: bold;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        /* Moldura estilo Cardboard (Bordas pretas e divisor central) */
+        #cardboard-mask {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        .divider {
+            position: absolute;
+            left: 50%;
+            top: 0;
+            width: 6px;
+            height: 100%;
+            background: #000;
+            transform: translateX(-50%);
+        }
+
+        .lens-border {
+            position: absolute;
+            top: 0;
+            width: 50%;
+            height: 100%;
+            box-shadow: inset 0 0 50px 22px #000;
+            background: radial-gradient(ellipse 55% 60% at 50% 50%, rgba(0,0,0,0) 60%, rgba(0,0,0,.55) 84%, #000 100%);
+        }
+
+        .lens-left { left: 0; }
+        .lens-right { right: 0; }
+    </style>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Sem MediaPipe aqui: os landmarks das mãos chegam do ATMOXR via postMessage
+         (bem mais leve - uma câmera e uma IA só p/ o app inteiro). -->
+</head>
+<body>
+
+    <div id="start-overlay" onclick="iniciarJogo()">
+        <h1>TOQUE PARA INICIAR</h1>
+        <p>Conceda permissão de Câmera e Giroscópio</p>
+    </div>
+
+    <button id="btn-cardboard" onclick="toggleCardboard()">MODO CARDBOARD: OFF</button>
+    <div id="hud">VIDA: 100 | INIMIGOS: <span id="enemy-count">0</span></div>
+    <div id="hud-r">VIDA: 100 | INIMIGOS: 0</div>
+
+    <div id="cardboard-mask">
+        <div class="lens-border lens-left"></div>
+        <div class="lens-border lens-right"></div>
+        <div class="divider"></div>
+    </div>
+
+    <div id="game-container"></div>
+
+    <script>
+        let scene, camera, renderer, stereoCamera;
+        let cardboardMode = false;
+        // Perfil do Google Cardboard 2015 (v2): IPD 64mm e FOV das lentes de 34mm.
+        const CB2015 = { ipd: 0.064, fovVR: 90, fovNormal: 75 };
+        // Delta de tempo (em "frames de 60 FPS") p/ o jogo rodar igual em qualquer tela.
+        let lastFrameMs = 0, dt60 = 1, dtSecGlobal = 1/60;
+        
+        let gunGroup, barrelMesh;
+        let flashlightGroup, flashlightSpot;
+        let isLookingDown = false;
+        
+        let maxSpeed = 0.05; 
+        let currentSpeed = 0;
+        
+        let gunPosTarget = new THREE.Vector3(0.3, -0.25, -0.6);
+        let gunRotTarget = new THREE.Euler(0, 0, 0);
+        
+        let flashPosTarget = new THREE.Vector3(-0.3, -0.25, -0.6);
+        let flashRotTarget = new THREE.Euler(0, 0, 0);
+
+        let projeteisJogador = [];
+        let projeteisInimigo = [];
+        let inimigos = [];
+        let playerProjectileGeo, playerProjectileMat, enemyProjectileGeo, enemyProjectileMat;
+        const tmpSpawn = new THREE.Vector3();
+        const tmpDir = new THREE.Vector3();
+        const tmpGunQuat = new THREE.Quaternion();
+        const tmpEnemyHead = new THREE.Vector3();
+        const tmpForward = new THREE.Vector3();
+        const tmpNextPos = new THREE.Vector3();
+        let paredes = [];
+        let paredeBounds = [];
+        let canShoot = true;
+        let shootCooldown = 250;
+        let playerHealth = 100;
+
+        let targetQuaternion = new THREE.Quaternion();
+        const recenterOffset = new THREE.Quaternion(); // "frente" definida ao entrar no jogo
+        const __effectiveQ = new THREE.Quaternion();
+        const __upAxis = new THREE.Vector3(0, 1, 0);
+        let screenOrientation = 0;
+
+        const mazeMap = [
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            [1,0,0,0,1,0,0,0,0,0,1,0,0,0,1],
+            [1,0,1,0,1,0,1,1,1,0,1,0,1,0,1],
+            [1,0,1,0,0,0,0,0,1,0,0,0,1,0,1],
+            [1,0,1,1,1,1,1,0,1,1,1,1,1,0,1],
+            [1,0,0,0,0,0,1,0,0,0,0,0,0,0,1],
+            [1,1,1,0,1,0,1,1,1,1,1,0,1,1,1],
+            [1,0,0,0,1,0,0,0,0,0,1,0,0,0,1],
+            [1,0,1,1,1,1,1,0,1,0,1,1,1,0,1],
+            [1,0,0,0,0,0,1,0,1,0,0,0,1,0,1],
+            [1,0,1,1,1,0,1,0,1,1,1,0,1,0,1],
+            [1,0,0,0,1,0,0,0,0,0,0,0,0,0,1],
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+        ];
+        const cellSize = 6;
+        let mazeOffsetX = 0, mazeOffsetZ = 0;
+
+        function initThree() {
+            const container = document.getElementById('game-container');
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x14141f);
+            scene.fog = new THREE.FogExp2(0x14141f, 0.015);
+
+            camera = new THREE.PerspectiveCamera(CB2015.fovNormal, window.innerWidth / window.innerHeight, 0.05, 160);
+            camera.position.set(-30, 1.6, -30);
+
+            stereoCamera = new THREE.StereoCamera();
+            stereoCamera.aspect = 0.5;
+            stereoCamera.eyeSep = CB2015.ipd; // separação dos olhos = IPD do Cardboard 2015
+
+            renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
+            renderer.setSize(window.innerWidth, window.innerHeight, false);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, cardboardMode ? 1.0 : 1.25));
+            renderer.shadowMap.enabled = false;
+            container.appendChild(renderer.domElement);
+
+            // Recursos dos projéteis reutilizados.
+            playerProjectileGeo = new THREE.SphereGeometry(0.05, 8, 8);
+            playerProjectileMat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+            enemyProjectileGeo = new THREE.SphereGeometry(0.06, 8, 8);
+            enemyProjectileMat = new THREE.MeshBasicMaterial({ color: 0xffcc00 });
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.45);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xaaccff, 0.3);
+            dirLight.position.set(0, 20, 0);
+            scene.add(dirLight);
+
+            criarLabirinto();
+            criarArma();
+            criarLanterna();
+            spawnInimigosFixos();
+
+            window.addEventListener('resize', onWindowResize);
+            setCardboardMode(cardboardMode); // aplica o estado atual (ex.: launcher já em VR)
+        }
+
+        function setCardboardMode(on) {
+            cardboardMode = !!on;
+            const btn = document.getElementById('btn-cardboard');
+            const mask = document.getElementById('cardboard-mask');
+            if (btn) btn.innerText = cardboardMode ? "MODO CARDBOARD: ON" : "MODO CARDBOARD: OFF";
+            if (mask) mask.style.display = cardboardMode ? 'block' : 'none';
+            document.body.classList.toggle('cardboard-on', cardboardMode);
+            if (camera) {
+                camera.fov = cardboardMode ? CB2015.fovVR : CB2015.fovNormal;
+                camera.updateProjectionMatrix();
+            }
+            if (renderer) renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, cardboardMode ? 1.0 : 1.25));
+            onWindowResize();
+        }
+
+        function toggleCardboard() { setCardboardMode(!cardboardMode); }
+
+        // Segue automaticamente o modo Cardboard do ATMOXR (launcher).
+        window.addEventListener('message', (ev) => {
+            const d = ev.data || {};
+            if (d.type === 'atmoxr-shoot-vr') { try { setCardboardMode(!!d.enabled); } catch (e) {} }
+            if (d.type === 'atmoxr-shoot-recenter') { try { recenterGameView(); } catch (e) {} }
+        });
+
+        // Ao entrar no jogo, a direção que o jogador está olhando vira a "frente".
+        function recenterGameView() {
+            tmpForward.set(0, 0, -1).applyQuaternion(targetQuaternion);
+            tmpForward.y = 0;
+            if (tmpForward.lengthSq() < 0.001) return;
+            tmpForward.normalize();
+            const yaw = Math.atan2(-tmpForward.x, -tmpForward.z);
+            recenterOffset.setFromAxisAngle(__upAxis, -yaw);
+        }
+
+        function criarLabirinto() {
+            const wallHeight = 4.5;
+            // Lambert é bem mais barato que Standard na GPU do celular.
+            const wallMat = new THREE.MeshLambertMaterial({ color: 0x3a3a4d });
+            const floorMat = new THREE.MeshLambertMaterial({ color: 0x1c1c28 });
+
+            const rows = mazeMap.length;
+            const cols = mazeMap[0].length;
+            const offsetX = (cols * cellSize) / 2;
+            const offsetZ = (rows * cellSize) / 2;
+
+            const floorGeo = new THREE.PlaneGeometry(cols * cellSize, rows * cellSize);
+            const floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            floor.receiveShadow = true;
+            scene.add(floor);
+
+            const grid = new THREE.GridHelper(cols * cellSize, cols * 2, 0x00ffcc, 0x333344);
+            grid.position.y = 0.01;
+            scene.add(grid);
+
+            const boxGeo = new THREE.BoxGeometry(cellSize, wallHeight, cellSize);
+
+            // TODAS as paredes num único InstancedMesh: 1 draw call (antes eram
+            // ~100 meshes, x2 no modo estéreo). Maior ganho de FPS do jogo.
+            let wallCount = 0;
+            for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (mazeMap[r][c] === 1) wallCount++;
+            const wallInstances = new THREE.InstancedMesh(boxGeo, wallMat, Math.max(1, wallCount));
+            const __m4 = new THREE.Matrix4();
+            let wi = 0;
+
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    if (mazeMap[r][c] === 1) {
+                        const posX = c * cellSize - offsetX + cellSize / 2;
+                        const posZ = r * cellSize - offsetZ + cellSize / 2;
+                        __m4.makeTranslation(posX, wallHeight / 2, posZ);
+                        wallInstances.setMatrixAt(wi++, __m4);
+                        paredeBounds.push({
+                            minX: posX - cellSize / 2,
+                            maxX: posX + cellSize / 2,
+                            minZ: posZ - cellSize / 2,
+                            maxZ: posZ + cellSize / 2
+                        });
+                    }
+                }
+            }
+            wallInstances.instanceMatrix.needsUpdate = true;
+            wallInstances.frustumCulled = false;
+            scene.add(wallInstances);
+            mazeOffsetX = offsetX; mazeOffsetZ = offsetZ;
+        }
+
+        function criarArma() {
+            gunGroup = new THREE.Group();
+
+            const matMetal = new THREE.MeshLambertMaterial({ color: 0x3d3d3d });
+            const matGrip = new THREE.MeshLambertMaterial({ color: 0x141414 });
+
+            const bodyGeo = new THREE.BoxGeometry(0.08, 0.1, 0.35);
+            const body = new THREE.Mesh(bodyGeo, matMetal);
+            
+            const gripGeo = new THREE.BoxGeometry(0.07, 0.18, 0.08);
+            const grip = new THREE.Mesh(gripGeo, matGrip);
+            grip.position.set(0, -0.1, 0.08);
+            grip.rotation.x = 0.3;
+
+            const barrelGeo = new THREE.CylinderGeometry(0.025, 0.025, 0.25, 16);
+            barrelMesh = new THREE.Mesh(barrelGeo, matMetal);
+            barrelMesh.rotation.x = Math.PI / 2;
+            barrelMesh.position.set(0, 0.02, -0.2);
+
+            gunGroup.add(body);
+            gunGroup.add(grip);
+            gunGroup.add(barrelMesh);
+
+            camera.add(gunGroup);
+            scene.add(camera);
+
+            gunGroup.position.set(0.3, -0.25, -0.6);
+        }
+
+        function criarLanterna() {
+            flashlightGroup = new THREE.Group();
+
+            const matCasing = new THREE.MeshLambertMaterial({ color: 0x5a5a5a });
+            const matLens = new THREE.MeshBasicMaterial({ color: 0xffffaa });
+
+            const bodyGeo = new THREE.CylinderGeometry(0.03, 0.04, 0.22, 16);
+            const body = new THREE.Mesh(bodyGeo, matCasing);
+            body.rotation.x = Math.PI / 2;
+
+            const lensGeo = new THREE.CylinderGeometry(0.038, 0.038, 0.01, 16);
+            const lens = new THREE.Mesh(lensGeo, matLens);
+            lens.rotation.x = Math.PI / 2;
+            lens.position.set(0, 0, -0.11);
+
+            flashlightGroup.add(body);
+            flashlightGroup.add(lens);
+
+            flashlightSpot = new THREE.SpotLight(0xfff5ea, 5, 35, Math.PI / 5, 0.3, 1);
+            flashlightSpot.position.set(0, 0, -0.12);
+            flashlightSpot.target.position.set(0, 0, -5);
+
+            flashlightGroup.add(flashlightSpot);
+            flashlightGroup.add(flashlightSpot.target);
+
+            camera.add(flashlightGroup);
+            flashlightGroup.position.set(-0.3, -0.25, -0.6);
+        }
+
+        function spawnInimigosFixos() {
+            const posicoesInimigos = [
+                { x: 0, z: -30 },
+                { x: 0, z: -18 },
+                { x: -36, z: -6 },
+                { x: 36, z: 6 },
+                { x: -36, z: 18 },
+                { x: 0, z: 30 }
+            ];
+
+            const bodyGeo = new THREE.BoxGeometry(1.0, 1.8, 1.0);
+
+            posicoesInimigos.forEach(pos => {
+                const enemyGroup = new THREE.Group();
+
+                const matBody = new THREE.MeshLambertMaterial({ color: 0xff2244 });
+                const bodyMesh = new THREE.Mesh(bodyGeo, matBody);
+                bodyMesh.position.y = 0.9;
+                bodyMesh.castShadow = true;
+                enemyGroup.add(bodyMesh);
+
+                const eyeGeo = new THREE.SphereGeometry(0.2, 8, 8);
+                const eyeMat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+                const eyeMesh = new THREE.Mesh(eyeGeo, eyeMat);
+                eyeMesh.position.set(0, 1.3, -0.5);
+                enemyGroup.add(eyeMesh);
+
+                enemyGroup.position.set(pos.x, 0, pos.z);
+
+                enemyGroup.userData = {
+                    hp: 3,
+                    lastShoot: Date.now() + Math.random() * 2000,
+                    bodyMat: matBody
+                };
+
+                scene.add(enemyGroup);
+                inimigos.push(enemyGroup);
+            });
+
+            atualizarHUD();
+        }
+
+        function atirarJogador() {
+             if (!canShoot || !gunGroup) return;
+
+             canShoot = false;
+             setTimeout(() => { canShoot = true; }, shootCooldown);
+
+             const projetil = new THREE.Mesh(playerProjectileGeo, playerProjectileMat);
+             barrelMesh.getWorldPosition(tmpSpawn);
+             projetil.position.copy(tmpSpawn);
+
+             tmpDir.set(0, 0, -1).applyQuaternion(gunGroup.getWorldQuaternion(tmpGunQuat));
+             projetil.userData = {
+                 velocity: tmpDir.clone().multiplyScalar(0.9),
+                 life: 50
+             };
+
+             scene.add(projetil);
+             projeteisJogador.push(projetil);
+             gunGroup.position.z += 0.05;
+         }
+
+         function atirarInimigo(inimigo) {
+             const miniLaser = new THREE.Mesh(enemyProjectileGeo, enemyProjectileMat);
+
+             tmpSpawn.copy(inimigo.position);
+             tmpSpawn.y += 1.3;
+             miniLaser.position.copy(tmpSpawn);
+
+             tmpDir.copy(camera.position).sub(tmpSpawn).normalize();
+
+             miniLaser.userData = {
+                 velocity: tmpDir.clone().multiplyScalar(0.25),
+                 life: 120
+             };
+
+             scene.add(miniLaser);
+             projeteisInimigo.push(miniLaser);
+         }
+
+        function initHandTracking() {
+            // Hand Tracking pertence ao ATMOXR principal.
+            // O jogo recebe os mesmos landmarks via postMessage, sem abrir câmera própria.
+            if (window.__shootDieBridgeReady) return;
+            window.__shootDieBridgeReady = true;
+            window.addEventListener('message', (ev) => {
+                const d = ev.data || {};
+                if (d.type === 'atmoxr-shoot-hand' && d.results) {
+                    try { onHandResults(d.results); } catch (e) {}
+                }
+            });
+        }
+
+        function onHandResults(results) {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+                    const landmarks = results.multiHandLandmarks[i];
+                    
+                    // CORREÇÃO DA CÂMERA REVERTIDA:
+                    // Invertemos a verificação do lado da mão (Left/Right) para a câmera traseira
+                    const detectedHand = results.multiHandedness[i].label;
+                    const isRightHand = (detectedHand === 'Left'); 
+
+                    const wrist = landmarks[0];
+                    const middle = landmarks[9];
+                    const thumbTip = landmarks[4];
+                    const indexMCP = landmarks[5];
+
+                    // CORREÇÃO DO EIXO X DA MÃO (Agora move junto com a sua mão real)
+                    const targetX = (wrist.x - 0.5) * 1.3;
+                    const targetY = (0.5 - wrist.y) * 1.0 - 0.1;
+                    const targetZ = -0.5 - (1 - wrist.z) * 0.5;
+
+                    const dx = middle.x - wrist.x;
+                    const dy = middle.y - wrist.y;
+                    const rotZ = Math.atan2(dx, dy) + Math.PI;
+
+                    if (isRightHand || results.multiHandLandmarks.length === 1) {
+                        // Mão Direita -> Arma (Posição e rotação aplicadas corretamente)
+                        gunPosTarget.set(targetX, targetY, targetZ);
+                        gunRotTarget.set(0, 0, -rotZ * 0.5);
+
+                        const handScale = Math.hypot(middle.x - wrist.x, middle.y - wrist.y, middle.z - wrist.z);
+                        const thumbDistance = Math.hypot(thumbTip.x - indexMCP.x, thumbTip.y - indexMCP.y, thumbTip.z - indexMCP.z) / handScale;
+
+                        if (thumbDistance < 0.45) {
+                            atirarJogador();
+                        }
+                    } else {
+                        // Mão Esquerda -> Lanterna
+                        flashPosTarget.set(targetX, targetY, targetZ);
+                        flashRotTarget.set(0, 0, -rotZ * 0.5);
+                    }
+                }
+            }
+        }
+
+        function initDeviceOrientation() {
+            // Giroscópio pertence ao ATMOXR principal.
+            // Recebe a orientação já calibrada pelo app.
+            if (window.__shootDieGyroBridgeReady) return;
+            window.__shootDieGyroBridgeReady = true;
+            window.addEventListener('message', (ev) => {
+                const d = ev.data || {};
+                if (d.type === 'atmoxr-shoot-gyro' && d.q) {
+                    try {
+                        targetQuaternion.set(d.q.x, d.q.y, d.q.z, d.q.w);
+                    } catch (e) {}
+                }
+            });
+        }
+
+        function setCameraQuaternion(quaternion, alpha, beta, gamma, orient) {
+            const zee = new THREE.Vector3(0, 0, 1);
+            const euler = new THREE.Euler();
+            const q0 = new THREE.Quaternion();
+            const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+
+            euler.set(beta, alpha, -gamma, 'YXZ');
+            quaternion.setFromEuler(euler);
+            quaternion.multiply(q1);
+            q0.setFromAxisAngle(zee, -orient);
+            quaternion.multiply(q0);
+        }
+
+        function checarOlharParaChao() {
+            camera.getWorldDirection(tmpForward); // reusa o temporário (zero alocação/frame)
+            return tmpForward.y < -0.20;
+        }
+
+        // Colisão por célula do labirinto: testa só as células sob o círculo
+        // (O(1)) em vez de varrer todas as ~100 paredes a cada verificação.
+        function colideComParede(x, z, raio) {
+            const minCx = Math.floor((x - raio + mazeOffsetX) / cellSize);
+            const maxCx = Math.floor((x + raio + mazeOffsetX) / cellSize);
+            const minCz = Math.floor((z - raio + mazeOffsetZ) / cellSize);
+            const maxCz = Math.floor((z + raio + mazeOffsetZ) / cellSize);
+            for (let cz = minCz; cz <= maxCz; cz++) {
+                for (let cx = minCx; cx <= maxCx; cx++) {
+                    if (cz < 0 || cz >= mazeMap.length || cx < 0 || cx >= mazeMap[0].length) return true;
+                    if (mazeMap[cz][cx] === 1) return true;
+                }
+            }
+            return false;
+        }
+
+        function podeMoverPara(novaPos) {
+            return !colideComParede(novaPos.x, novaPos.z, 0.5);
+        }
+
+        function atualizarInimigos() {
+            const now = Date.now();
+
+            for (let i = inimigos.length - 1; i >= 0; i--) {
+                const inimigo = inimigos[i];
+
+                tmpNextPos.set(camera.position.x, 0, camera.position.z);
+                inimigo.lookAt(tmpNextPos);
+
+                const distSq = inimigo.position.distanceToSquared(camera.position);
+
+                if (distSq < 625 && now - inimigo.userData.lastShoot > 1800) {
+                    inimigo.userData.lastShoot = now;
+                    atirarInimigo(inimigo);
+                }
+            }
+        }
+
+        function projectileHitsWall(p, radius) {
+            return colideComParede(p.position.x, p.position.z, radius);
+        }
+
+        function atualizarProjeteis() {
+            for (let i = projeteisJogador.length - 1; i >= 0; i--) {
+                const p = projeteisJogador[i];
+                p.position.addScaledVector(p.userData.velocity, dt60);
+                p.userData.life -= dt60;
+
+                let hit = false;
+                for (let j = inimigos.length - 1; j >= 0; j--) {
+                    const inimigo = inimigos[j];
+                    tmpEnemyHead.copy(inimigo.position);
+                    tmpEnemyHead.y += 0.9;
+                    const dx = p.position.x - tmpEnemyHead.x;
+                    const dy = p.position.y - tmpEnemyHead.y;
+                    const dz = p.position.z - tmpEnemyHead.z;
+
+                    if ((dx*dx + dy*dy + dz*dz) < 1.0) {
+                        hit = true;
+                        inimigo.userData.hp--;
+                        inimigo.userData.bodyMat.color.setHex(0xffffff);
+                        const bodyMat = inimigo.userData.bodyMat;
+                        setTimeout(() => bodyMat.color.setHex(0xff2244), 80);
+
+                        if (inimigo.userData.hp <= 0) {
+                            scene.remove(inimigo);
+                            inimigos.splice(j, 1);
+                            atualizarHUD();
+                        }
+                        break;
+                    }
+                }
+
+                if (!hit && projectileHitsWall(p, 0.06)) hit = true;
+
+                if (hit || p.userData.life <= 0) {
+                    scene.remove(p);
+                    projeteisJogador.splice(i, 1);
+                }
+            }
+
+            for (let i = projeteisInimigo.length - 1; i >= 0; i--) {
+                const p = projeteisInimigo[i];
+                p.position.addScaledVector(p.userData.velocity, dt60);
+                p.userData.life -= dt60;
+
+                let hit = false;
+                const dx = p.position.x - camera.position.x;
+                const dy = p.position.y - camera.position.y;
+                const dz = p.position.z - camera.position.z;
+
+                if ((dx*dx + dy*dy + dz*dz) < 0.36) {
+                    hit = true;
+                    playerHealth = Math.max(0, playerHealth - 10);
+                    atualizarHUD();
+
+                    renderer.setClearColor(0xff0000, 0.3);
+                    setTimeout(() => renderer.setClearColor(0x14141f, 1), 80);
+                }
+
+                if (!hit && projectileHitsWall(p, 0.07)) hit = true;
+
+                if (hit || p.userData.life <= 0) {
+                    scene.remove(p);
+                    projeteisInimigo.splice(i, 1);
+                }
+            }
+        }
+        function atualizarHUD() {
+            const txt = `VIDA: ${playerHealth} | INIMIGOS: ${inimigos.length}`;
+            document.getElementById('hud').innerText = txt;
+            const hr = document.getElementById('hud-r');
+            if (hr) hr.innerText = txt;
+        }
+
+        function renderScene() {
+            if (cardboardMode) {
+                // RENDERIZAÇÃO ESTEREOSCÓPICA (MODO CARDBOARD)
+                const width = window.innerWidth;
+                const height = window.innerHeight;
+
+                stereoCamera.update(camera);
+
+                renderer.setScissorTest(true);
+
+                // Olho Esquerdo
+                renderer.setViewport(0, 0, width / 2, height);
+                renderer.setScissor(0, 0, width / 2, height);
+                renderer.render(scene, stereoCamera.cameraL);
+
+                // Olho Direito
+                renderer.setViewport(width / 2, 0, width / 2, height);
+                renderer.setScissor(width / 2, 0, width / 2, height);
+                renderer.render(scene, stereoCamera.cameraR);
+
+                renderer.setScissorTest(false);
+            } else {
+                // RENDERIZAÇÃO NORMAL (TELA CHEIA)
+                renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
+                renderer.render(scene, camera);
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // DELTA DE TEMPO: o jogo corre na MESMA velocidade a 30, 60, 90 ou
+            // 120 FPS (antes tudo era "por frame": em tela de 120Hz corria 2x,
+            // a 30 FPS caía p/ metade). Movimento, projéteis e suavização usam dt.
+            const nowMs = performance.now();
+            dtSecGlobal = Math.min(0.05, Math.max(0.001, (nowMs - (lastFrameMs || nowMs)) / 1000));
+            lastFrameMs = nowMs;
+            dt60 = dtSecGlobal * 60;
+
+            __effectiveQ.copy(recenterOffset).multiply(targetQuaternion);
+            camera.quaternion.slerp(__effectiveQ, 1 - Math.exp(-dtSecGlobal * 14));
+
+            isLookingDown = checarOlharParaChao();
+            const targetSpeed = isLookingDown ? maxSpeed : 0;
+            currentSpeed = THREE.MathUtils.lerp(currentSpeed, targetSpeed, 1 - Math.exp(-dtSecGlobal * 6));
+
+            if (currentSpeed > 0.001) {
+                camera.getWorldDirection(tmpForward);
+                tmpForward.y = 0;
+                tmpForward.normalize();
+
+                tmpNextPos.copy(camera.position).addScaledVector(tmpForward, currentSpeed * dt60);
+                if (podeMoverPara(tmpNextPos)) {
+                    camera.position.copy(tmpNextPos);
+                }
+            }
+
+            // Arma e lanterna seguem as mãos com amortecimento independente de FPS.
+            const kHand = 1 - Math.exp(-dtSecGlobal * 13);
+            if (gunGroup) {
+                gunGroup.position.lerp(gunPosTarget, kHand);
+                gunGroup.rotation.x = THREE.MathUtils.lerp(gunGroup.rotation.x, gunRotTarget.x, kHand);
+                gunGroup.rotation.y = THREE.MathUtils.lerp(gunGroup.rotation.y, gunRotTarget.y, kHand);
+                gunGroup.rotation.z = THREE.MathUtils.lerp(gunGroup.rotation.z, gunRotTarget.z, kHand);
+            }
+            if (flashlightGroup) {
+                flashlightGroup.position.lerp(flashPosTarget, kHand);
+                flashlightGroup.rotation.x = THREE.MathUtils.lerp(flashlightGroup.rotation.x, flashRotTarget.x, kHand);
+                flashlightGroup.rotation.y = THREE.MathUtils.lerp(flashlightGroup.rotation.y, flashRotTarget.y, kHand);
+                flashlightGroup.rotation.z = THREE.MathUtils.lerp(flashlightGroup.rotation.z, flashRotTarget.z, kHand);
+            }
+
+            atualizarInimigos();
+            atualizarProjeteis();
+
+            renderScene();
+        }
+
+        function onWindowResize() {
+            if (!camera || !renderer) return;
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+
+            stereoCamera.aspect = (width / 2) / height;
+
+            renderer.setSize(width, height);
+        }
+
+        function iniciarJogo() {
+            document.getElementById('start-overlay').style.display = 'none';
+
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission()
+                    .then(response => {
+                        if (response === 'granted') {
+                            initDeviceOrientation();
+                        }
+                    })
+                    .catch(console.error);
+            } else {
+                initDeviceOrientation();
+            }
+
+            initThree();
+            initHandTracking();
+            recenterGameView();
+            animate();
+        }
+    </script>
+</body>
+</html>

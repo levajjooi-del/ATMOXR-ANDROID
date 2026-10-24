@@ -112,6 +112,25 @@ public class MainActivity extends Activity {
         webView.loadUrl(START_URL);
     }
 
+    /** MIME por extensão — essencial p/ os chunks JS/CSS do export do Next.js. */
+    private static String mimeFor(String path) {
+        String p = path.toLowerCase();
+        if (p.endsWith(".html")) return "text/html";
+        if (p.endsWith(".js") || p.endsWith(".mjs")) return "text/javascript";
+        if (p.endsWith(".css")) return "text/css";
+        if (p.endsWith(".json")) return "application/json";
+        if (p.endsWith(".png")) return "image/png";
+        if (p.endsWith(".jpg") || p.endsWith(".jpeg")) return "image/jpeg";
+        if (p.endsWith(".gif")) return "image/gif";
+        if (p.endsWith(".svg")) return "image/svg+xml";
+        if (p.endsWith(".ico")) return "image/x-icon";
+        if (p.endsWith(".wasm")) return "application/wasm";
+        if (p.endsWith(".woff2")) return "font/woff2";
+        if (p.endsWith(".woff")) return "font/woff";
+        if (p.endsWith(".txt")) return "text/plain";
+        return "application/octet-stream";
+    }
+
     /** Concede somente a câmera (o app não pede microfone). */
     private void grantVideoOnly(PermissionRequest request) {
         List<String> granted = new ArrayList<>();

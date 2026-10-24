@@ -1,0 +1,254 @@
+/* ============================================================
+   ATMOXR — tema visual "Horizon" (estilo Meta Quest)
+   Regra de performance: NADA de backdrop-filter nos painéis
+   grandes (é o maior vilão de FPS em celular fraco).
+   ============================================================ */
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, Roboto, Arial, sans-serif;
+  color: #f2f4fa;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+button { font-family: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+input { font-family: inherit; }
+
+/* ---------- Palco VR (camadas) ---------- */
+.xr-root { position: fixed; inset: 0; overflow: hidden; background: #000; }
+
+.eye-video {
+  position: absolute; top: 0; height: 100%; object-fit: cover;
+  background: #000; z-index: 0;
+}
+.video-l { left: 0; width: 100%; }
+.video-r { left: 50%; width: 50%; display: none; }
+.xr-root.sbs .video-l { width: 50%; }
+.xr-root.sbs .video-r { display: block; }
+
+.gl-mount { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.gl-mount canvas { position: absolute; inset: 0; }
+
+.hands-canvas { position: absolute; top: 0; height: 100%; z-index: 5; pointer-events: none; }
+.hands-l { left: 0; width: 100%; }
+.hands-r { left: 50%; width: 50%; display: none; }
+.xr-root.sbs .hands-l { width: 50%; }
+.xr-root.sbs .hands-r { display: block; }
+
+/* Os dois painéis (olho esq./dir.) são renderizados aqui e depois
+   "adotados" pelos CSS3DRenderers. Fora da tela até lá. */
+.panel-stage { position: absolute; left: -99999px; top: 0; width: 960px; height: 560px; }
+
+/* ---------- Tela inicial ---------- */
+.start-overlay {
+  position: absolute; inset: 0; z-index: 50; background: #000;
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: flex-start; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  padding: 16px 20px 28px; text-align: center;
+}
+.start-logo {
+  width: auto; max-width: min(80vw, 470px); max-height: 46vh; height: auto;
+  display: block; object-fit: contain; margin-top: auto; flex: 0 1 auto;
+}
+.start-overlay p {
+  flex: 0 0 auto; max-width: 620px; color: #c8cede; font-size: 16px;
+  line-height: 1.5; margin: 14px 0 0;
+}
+.start-btn {
+  flex: 0 0 auto; margin: 20px 0 auto;
+  background: linear-gradient(92deg, #06b6d4, #6366f1 55%, #d946ef);
+  padding: 16px 44px; font-size: 19px; font-weight: 800; border-radius: 999px;
+  box-shadow: 0 10px 34px rgba(99, 102, 241, .45); letter-spacing: .3px; color: #fff;
+}
+.start-btn:disabled { opacity: .55; }
+.start-error { color: #ff8a8a !important; font-size: 14px !important; }
+.start-skip { color: #9db4ff; text-decoration: underline; font-size: 15px; padding: 8px; }
+@media (max-height: 480px) {
+  .start-logo { max-height: 40vh; }
+  .start-btn { padding: 13px 38px; font-size: 17px; }
+  .start-overlay p { font-size: 14px; }
+}
+
+/* ---------- Overlay do jogo ---------- */
+.game-overlay { position: absolute; inset: 0; z-index: 40; background: #000; }
+.game-frame { width: 100%; height: 100%; border: 0; display: block; }
+.game-close {
+  position: absolute; top: 10px; right: 12px; z-index: 41;
+  width: 46px; height: 46px; border-radius: 50%;
+  background: rgba(10, 12, 18, .82); color: #fff; font-size: 20px;
+  border: 1px solid rgba(255, 255, 255, .35);
+}
+
+/* ---------- Grupo painel + dock (dentro do CSS3D) ---------- */
+.window-group {
+  width: 960px; height: 560px;
+  display: flex; flex-direction: column;
+  pointer-events: auto;
+}
+
+.win {
+  flex: 1 1 auto; min-height: 0;
+  display: flex; flex-direction: column;
+  background: rgba(13, 16, 24, .96);
+  border: 1px solid rgba(255, 255, 255, .09);
+  border-radius: 26px; overflow: hidden;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .55);
+}
+.win-header {
+  flex: 0 0 auto; height: 54px; padding: 0 10px 0 20px;
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(255, 255, 255, .045);
+  border-bottom: 1px solid rgba(255, 255, 255, .07);
+}
+.win-title { font-size: 19px; font-weight: 700; letter-spacing: .2px; flex: 1 1 auto; text-align: left; }
+.win-title .grad {
+  background: linear-gradient(92deg, #22d3ee, #818cf8, #e879f9);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.win-close {
+  width: 40px; height: 40px; border-radius: 50%; font-size: 16px;
+  background: rgba(255, 255, 255, .08);
+}
+.win-close:active { background: rgba(255, 90, 90, .35); }
+.win-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+
+/* Áreas roláveis (pinça-arrastar e toque) */
+[data-scroll] { overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.25) transparent; }
+[data-scroll]::-webkit-scrollbar { width: 6px; }
+[data-scroll]::-webkit-scrollbar-thumb { background: rgba(255,255,255,.22); border-radius: 3px; }
+
+/* Alça para arrastar o painel com a pinça */
+.move-handle {
+  flex: 0 0 auto; height: 26px; margin-top: 10px;
+  display: flex; align-items: center; justify-content: center;
+  color: rgba(255, 255, 255, .5); font-size: 17px; letter-spacing: 6px;
+}
+
+/* Dock Taskbar (sempre embaixo: altura fixa do grupo + margin-top auto) */
+.dock {
+  flex: 0 0 auto; margin-top: auto; height: 72px;
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 18px;
+  background: rgba(10, 12, 18, .94);
+  border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 999px;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, .5);
+}
+.dock-clock { font-size: 20px; font-weight: 700; min-width: 64px; text-align: left; }
+.dock-btn {
+  width: 52px; height: 52px; border-radius: 50%; font-size: 24px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255, 255, 255, .07);
+}
+.dock-btn:active { background: rgba(255, 255, 255, .2); }
+.dock-btn.active { background: linear-gradient(135deg, #0ea5c9, #6366f1); box-shadow: 0 4px 18px rgba(99,102,241,.55); }
+.dock-sep { width: 1px; height: 36px; background: rgba(255, 255, 255, .14); margin: 0 6px; }
+.dock-spacer { flex: 1 1 auto; }
+
+/* ---------- Biblioteca (grade de blocos) ---------- */
+.apps-grid {
+  flex: 1 1 auto; min-height: 0;
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;
+  padding: 18px; align-content: start;
+}
+.tile {
+  height: 128px; border-radius: 20px; position: relative;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  color: #fff; text-align: center; padding: 10px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.25), 0 8px 22px rgba(0,0,0,.35);
+}
+.tile:active { filter: brightness(1.18); }
+.tile-icon { font-size: 42px; line-height: 1; }
+.tile-name { font-size: 16px; font-weight: 700; text-shadow: 0 2px 8px rgba(0,0,0,.45); }
+.tile-desc { font-size: 12px; opacity: .85; }
+.tile-blue   { background: linear-gradient(145deg, #2563eb, #06b6d4); }
+.tile-red    { background: linear-gradient(145deg, #dc2626, #f97316); }
+.tile-purple { background: linear-gradient(145deg, #7c3aed, #d946ef); }
+.tile-teal   { background: linear-gradient(145deg, #0d9488, #22c55e); }
+.tile-pink   { background: linear-gradient(145deg, #ec4899, #a78bfa); }
+.tile-orange { background: linear-gradient(145deg, #ea580c, #facc15); }
+.tile-green  { background: linear-gradient(145deg, #16a34a, #65a30d); }
+.tile-gray   { background: linear-gradient(145deg, #475569, #1e293b); }
+.empty-note { grid-column: 1 / -1; text-align: center; color: #9aa7bd; font-size: 16px; padding: 40px 20px; }
+
+/* ---------- Loja ---------- */
+.store-list { flex: 1 1 auto; min-height: 0; padding: 14px 18px; }
+.store-row {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 14px; margin-bottom: 10px;
+  background: rgba(255, 255, 255, .05); border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, .06);
+}
+.store-icon {
+  width: 58px; height: 58px; border-radius: 16px; flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center; font-size: 30px;
+}
+.store-meta { flex: 1 1 auto; min-width: 0; text-align: left; }
+.store-name { font-size: 17px; font-weight: 700; }
+.store-desc { font-size: 13px; color: #9aa7bd; margin-top: 2px; }
+.store-btn {
+  flex: 0 0 auto; padding: 10px 18px; border-radius: 999px;
+  font-size: 14px; font-weight: 700; color: #fff;
+  background: linear-gradient(92deg, #06b6d4, #6366f1);
+}
+.store-btn.remove { background: rgba(255, 255, 255, .12); }
+
+/* ---------- Navegador / YouTube ---------- */
+.browser-bar {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; border-bottom: 1px solid rgba(255, 255, 255, .07);
+  background: rgba(255, 255, 255, .03);
+}
+.bar-btn {
+  width: 42px; height: 42px; border-radius: 50%; font-size: 18px; flex: 0 0 auto;
+  background: rgba(255, 255, 255, .08); display: flex; align-items: center; justify-content: center;
+}
+.addr-input {
+  flex: 1 1 auto; height: 44px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .14);
+  background: rgba(255, 255, 255, .07); color: #fff; font-size: 16px; padding: 0 18px; outline: none;
+}
+.browser-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.browser-frame { flex: 1 1 auto; width: 100%; border: 0; background: #fff; }
+.browser-home {
+  flex: 1 1 auto; min-height: 0; overflow: hidden;
+  display: flex; flex-direction: column; align-items: center; padding: 22px 30px 10px;
+}
+.browser-logo {
+  font-size: 40px; font-weight: 900; letter-spacing: 1px; margin-bottom: 4px;
+  background: linear-gradient(92deg, #22d3ee, #818cf8, #e879f9);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.browser-tag { color: #9aa7bd; font-size: 14px; margin-bottom: 18px; }
+.shortcut-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; width: 100%; }
+.shortcut {
+  height: 96px; border-radius: 18px; background: rgba(255, 255, 255, .06);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px;
+  border: 1px solid rgba(255, 255, 255, .07); color: #eef1f8; font-size: 14px; font-weight: 600;
+}
+.shortcut-icon { font-size: 32px; }
+.yt-chips { flex: 0 0 auto; display: flex; gap: 8px; padding: 10px 14px 4px; }
+.yt-chip {
+  padding: 8px 16px; border-radius: 999px; font-size: 14px; font-weight: 600;
+  background: rgba(255, 255, 255, .09);
+}
+.yt-frame { flex: 1 1 auto; width: 100%; border: 0; background: #000; margin-top: 8px; }
+
+/* ---------- Teclado virtual ---------- */
+.keyboard {
+  flex: 0 0 auto; margin-top: 10px; padding: 12px 14px 14px;
+  background: rgba(10, 12, 18, .96); border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 22px;
+}
+.kb-row { display: flex; gap: 7px; margin-bottom: 7px; justify-content: center; }
+.kb-row:last-child { margin-bottom: 0; }
+.kb-key {
+  flex: 1 1 0; height: 52px; border-radius: 12px; font-size: 19px; font-weight: 600;
+  background: rgba(255, 255, 255, .1); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+}
+.kb-key:active { background: rgba(99, 102, 241, .6); }
+.kb-key.wide { flex: 1.6 1 0; }
+.kb-key.xwide { flex: 4 1 0; }
+.kb-key.enter { background: linear-gradient(92deg, #06b6d4, #6366f1); flex: 1.6 1 0; }
