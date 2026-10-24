@@ -64,6 +64,19 @@ jobs:
           cp app/build/outputs/apk/debug/app-debug.apk ATMOXR.apk
           ls -lh ATMOXR.apk
 
+      # Trava de segurança: se o JS do Next (pasta next/, ex-_next) não
+      # estiver DENTRO do APK, o build falha em vez de publicar um app oco.
+      - name: Verify APK contents
+        run: |
+          unzip -l ATMOXR.apk > /tmp/apklist.txt
+          grep -q "assets/index.html" /tmp/apklist.txt
+          grep -q "assets/next/static/chunks/" /tmp/apklist.txt
+          grep -q "assets/shoot-the-die.html" /tmp/apklist.txt
+          grep -q "assets/logo.jpg" /tmp/apklist.txt
+          SIZE=$(stat -c %s ATMOXR.apk)
+          echo "APK size: $SIZE bytes"
+          test "$SIZE" -gt 350000
+
       - name: Upload APK as artifact
         uses: actions/upload-artifact@v4
         with:
