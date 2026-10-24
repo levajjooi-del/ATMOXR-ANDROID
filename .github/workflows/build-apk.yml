@@ -91,8 +91,8 @@ jobs:
           tag_name: apk-latest
           name: "ATMOXR — APK mais recente"
           body: |
-            APK do **ATMOXR** gerado automaticamente do projeto `web/`
-            (Next.js + React + Three.js — base nova v4).
+            APK do **ATMOXR 4.1** gerado automaticamente do projeto `web/`
+            (Next.js + React + Three.js — dock Aura, navegador Quest e mãos corrigidas).
 
             📲 Baixe o arquivo **ATMOXR.apk** abaixo e instale no Android
             (pode ser necessário permitir "instalar de fontes desconhecidas").

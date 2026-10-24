@@ -1,9 +1,10 @@
 /* ============================================================
-   HandTracker — rastreamento de mãos estilo Meta Quest 3S
-   - MediaPipe Hands (CDN), taxa adaptativa p/ celular fraco
-   - Cursor com laser saindo da palma, anel que "aperta" na pinça
-   - Clique = pinça rápida (soltou, clicou); segurar + mover = rolar/arrastar
-   - Hit-test com retângulos cacheados (sem varrer o DOM por frame)
+   ATMOXR HandTracker
+   - MediaPipe Hands com entrada de câmera traseira (sem espelhar)
+   - Corrige a convenção selfie Left/Right do MediaPipe
+   - Pinça natural: encosta para segurar, solta para clicar; sem raio
+   - Arraste/rolagem por pinça sustentada; hit-test cacheado
+   - Inferência e desenho adaptativos para poupar CPU/FPS
    ============================================================ */
 
 const HAND_CONNECTIONS = [
@@ -15,28 +16,89 @@ const HAND_CONNECTIONS = [
   [0, 17],
 ];
 
-const GAIN_X = 1.3;            // expansão do alcance ao redor do centro
-const GAIN_Y = 1.25;
-const PINCH_ON = 0.34;         // razão dist(4,8)/dist(0,9) p/ apertar
-const PINCH_OFF = 0.42;        // ... e p/ soltar (histerese)
-const TAP_MAX_MS = 380;        // pinça rápida = clique
-const TAP_MAX_MOVE = 16;       // px
-const DRAG_MIN_MOVE = 10;      // px p/ virar arrastar/rolar
-const DWELL_MS = 800;          // olhar/apontar parado = clique
-const CACHE_MS = 180;          // validade do cache de retângulos
+const GAIN_X = 1.12;
+const GAIN_Y = 1.08;
+const PINCH_ON = 0.34;
+const PINCH_OFF = 0.43;
+const TAP_MAX_MS = 600;
+const TAP_MAX_MOVE = 24;
+const DRAG_MIN_MOVE = 12;
+const DWELL_MS = 900;
+const CACHE_MS = 140;
 const MEDIAPIPE_VER = '0.4.1675469240';
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 const dist2d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
+function convexHull(points) {
+  const sorted = points.map(({ x, y }) => ({ x, y })).sort((a, b) => a.x - b.x || a.y - b.y);
+  if (sorted.length < 3) return sorted;
+  const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lower = [];
+  for (const point of sorted) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], point) <= 0) lower.pop();
+    lower.push(point);
+  }
+  const upper = [];
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const point = sorted[i];
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], point) <= 0) upper.pop();
+    upper.push(point);
+  }
+  lower.pop();
+  upper.pop();
+  return lower.concat(upper);
+}
+
+const swapLabel = (label) => {
+  if (label === 'Left') return 'Right';
+  if (label === 'Right') return 'Left';
+  return label;
+};
+
+function handednessLabel(entry) {
+  if (!entry) return '';
+  if (entry.label) return entry.label;
+  if (entry.categoryName) return entry.categoryName;
+  if (entry.classification && entry.classification[0]) return entry.classification[0].label || '';
+  if (entry.categories && entry.categories[0]) return entry.categories[0].categoryName || entry.categories[0].label || '';
+  return '';
+}
+
+function normalizeHandednessEntry(entry) {
+  if (!entry || typeof entry !== 'object') return entry;
+  const out = { ...entry };
+  if (out.label) out.label = swapLabel(out.label);
+  if (out.categoryName) out.categoryName = swapLabel(out.categoryName);
+  if (Array.isArray(out.classification)) {
+    out.classification = out.classification.map((c) => ({ ...c, label: swapLabel(c.label) }));
+  }
+  if (Array.isArray(out.categories)) {
+    out.categories = out.categories.map((c) => ({
+      ...c,
+      label: c.label ? swapLabel(c.label) : c.label,
+      categoryName: c.categoryName ? swapLabel(c.categoryName) : c.categoryName,
+    }));
+  }
+  // Compatibilidade com o protocolo antigo do ShootTheDie, que lê .label.
+  if (!out.label) {
+    const label = handednessLabel(out);
+    if (label) out.label = label;
+  }
+  return out;
+}
+
 function loadScript(src) {
-  return new Promise((res, rej) => {
-    if (document.querySelector(`script[src="${src}"]`)) return res();
-    const s = document.createElement('script');
-    s.src = src;
-    s.onload = res;
-    s.onerror = rej;
-    document.head.appendChild(s);
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${src}"]`);
+    if (existing && window.Hands) return resolve();
+    const script = existing || document.createElement('script');
+    if (!existing) {
+      script.src = src;
+      document.head.appendChild(script);
+    }
+    script.onload = resolve;
+    script.onerror = reject;
   });
 }
 
@@ -46,17 +108,21 @@ export class HandTracker {
     this.canvasL = canvasL;
     this.canvasR = canvasR;
     this.opts = opts;
-    this.ctxL = canvasL.getContext('2d');
-    this.ctxR = canvasR ? canvasR.getContext('2d') : null;
+    this.ctxL = canvasL.getContext('2d', { alpha: true, desynchronized: true });
+    this.ctxR = canvasR ? canvasR.getContext('2d', { alpha: true, desynchronized: true }) : null;
 
     this.hands = null;
     this._running = false;
     this._sending = false;
     this._frame = 0;
     this._skipEvery = 1;
-    this._emaMs = 16;
+    this._emaMs = 32;
+    this._lastVideoTime = -1;
 
-    this._landmarks = [];           // últimas mãos detectadas
+    this._landmarks = [];
+    this._handLabels = [];
+    this._activeLabel = '';
+    this._activeIndex = 0;
     this.cursor = { x: -100, y: -100, seen: false };
     this.pinch = false;
     this.pinchProgress = 0;
@@ -74,6 +140,7 @@ export class HandTracker {
     this._cache = [];
     this._cacheAt = 0;
     this._lastTs = 0;
+    this._needsDraw = true;
     this._loop = this._loop.bind(this);
   }
 
@@ -83,127 +150,218 @@ export class HandTracker {
     requestAnimationFrame(this._loop);
     try {
       await loadScript(`https://cdn.jsdelivr.net/npm/@mediapipe/hands@${MEDIAPIPE_VER}/hands.js`);
+      if (!this._running || !window.Hands) return;
       const hands = new window.Hands({
-        locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@${MEDIAPIPE_VER}/${f}`,
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@${MEDIAPIPE_VER}/${file}`,
       });
       hands.setOptions({
         maxNumHands: 2,
         modelComplexity: 0,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5,
+        minDetectionConfidence: 0.48,
+        minTrackingConfidence: 0.48,
       });
-      hands.onResults((r) => this._onResults(r));
+      hands.onResults((results) => this._onResults(results));
       this.hands = hands;
-    } catch (e) {
-      // Sem internet/CDN: o app continua por toque.
-      console.warn('[ATMOXR] MediaPipe indisponível:', e);
+    } catch (error) {
+      // Sem internet/CDN, o app continua utilizável por toque.
+      console.warn('[ATMOXR] MediaPipe indisponível:', error);
     }
   }
 
-  stop() { this._running = false; }
+  stop() {
+    this._running = false;
+    if (this.hands && this.hands.close) {
+      try { Promise.resolve(this.hands.close()).catch(() => {}); } catch (error) {}
+    }
+    this.hands = null;
+  }
 
-  invalidate() { this._cacheAt = 0; }
+  invalidate() {
+    this._cacheAt = 0;
+    this._needsDraw = true;
+  }
 
   _loop(ts) {
     if (!this._running) return;
     requestAnimationFrame(this._loop);
-    const dt = this._lastTs ? Math.min(ts - this._lastTs, 50) : 16;
     this._lastTs = ts;
     this._resizeCanvases();
     this._maybeSend();
-    this._draw(dt);
+    if (this._needsDraw) this._draw();
   }
 
   async _maybeSend() {
     if (!this.hands || this._sending) return;
-    const v = this.video;
-    if (!v || v.readyState < 2 || v.videoWidth === 0) return;
+    const video = this.video;
+    if (!video || video.readyState < 2 || !video.videoWidth || !video.videoHeight) return;
+    // O RAF do telefone pode rodar a 60 Hz, mas a câmera entrega ~30 quadros.
+    // Evita mandar o mesmo frame duas vezes para o modelo.
+    if (video.currentTime === this._lastVideoTime) return;
+    this._lastVideoTime = video.currentTime;
     this._frame++;
     if (this._frame % this._skipEvery !== 0) return;
+
     this._sending = true;
-    const t0 = performance.now();
+    const startedAt = performance.now();
     try {
-      await this.hands.send({ image: v });
-    } catch (e) { /* frame perdido, segue o jogo */ }
-    const ms = performance.now() - t0;
-    this._emaMs = this._emaMs * 0.85 + ms * 0.15;
-    // Adapta a taxa: mão pesada => processa menos frames (mais FPS p/ render)
-    this._skipEvery = this._emaMs > 80 ? 3 : this._emaMs > 45 ? 2 : 1;
-    this._sending = false;
+      await this.hands.send({ image: video });
+    } catch (error) {
+      // Um quadro perdido não deve interromper o loop de renderização.
+    } finally {
+      const elapsed = performance.now() - startedAt;
+      this._emaMs = this._emaMs * 0.82 + elapsed * 0.18;
+      // 30 fps quando leve; reduz inferência só em aparelhos que precisam.
+      this._skipEvery = this._emaMs > 92 ? 3 : this._emaMs > 56 ? 2 : 1;
+      this._sending = false;
+    }
   }
 
   _onResults(results) {
-    // Sempre encaminha (o ShootTheDie recebe as mãos por esta ponte).
-    if (this.opts.onResults) this.opts.onResults(results);
+    // A solução MediaPipe assume selfie espelhada. A câmera traseira do app
+    // não é espelhada, então os nomes Left/Right precisam ser invertidos uma vez.
+    const normalized = {
+      ...results,
+      multiHandedness: (results.multiHandedness || []).map(normalizeHandednessEntry),
+    };
+    if (this.opts.onResults) this.opts.onResults(normalized);
 
     const uiActive = this.opts.isUiActive ? this.opts.isUiActive() : true;
     if (!uiActive) {
       this._landmarks = [];
+      this._handLabels = [];
+      this._activeLabel = '';
+      this.cursor.seen = false;
       this.pinch = false;
       this._dragging = false;
+      this._needsDraw = true;
       return;
     }
 
-    this._landmarks = results.multiHandLandmarks || [];
-    if (this._landmarks.length > 0) {
-      this._processHand(this._landmarks[0], performance.now());
+    this._landmarks = normalized.multiHandLandmarks || [];
+    this._handLabels = normalized.multiHandedness.map(handednessLabel);
+    if (this._landmarks.length) {
+      const nextIndex = this._pickActiveHand(this._landmarks, this._handLabels);
+      const nextLabel = this._handLabels[nextIndex] || `hand-${nextIndex}`;
+      if (nextLabel !== this._activeLabel) this.cursor.seen = false;
+      this._activeIndex = nextIndex;
+      this._activeLabel = nextLabel;
+      this._processHand(this._landmarks[nextIndex], performance.now());
     } else {
+      this._landmarks = [];
+      this._handLabels = [];
+      this._activeLabel = '';
       this.cursor.seen = false;
-      if (this.pinch) { this.pinch = false; this._dragging = false; }
+      this.pinchProgress = 0;
+      if (this.pinch) {
+        this.pinch = false;
+        this._dragging = false;
+        this._scrollTarget = null;
+        this._panelHandle = null;
+        this._pinchStart = null;
+      }
+      this._needsDraw = true;
     }
+  }
+
+  _pickActiveHand(landmarks, labels) {
+    const labelsPresent = labels.slice(0, landmarks.length);
+    const current = labelsPresent.indexOf(this._activeLabel);
+    const pinchCandidates = [];
+    for (let i = 0; i < landmarks.length; i++) {
+      const hand = landmarks[i];
+      const size = dist2d(hand[0], hand[9]) || 0.0001;
+      const pinchRatio = dist2d(hand[4], hand[8]) / size;
+      if (pinchRatio < PINCH_ON + 0.1) pinchCandidates.push(i);
+    }
+
+    // Mantém a mão que iniciou a pinça; se a outra mão fizer pinça, permite
+    // trocar para ela sem o cursor saltar entre mãos a cada frame.
+    if (this.pinch && current >= 0) return current;
+    if (pinchCandidates.length) {
+      const sameHand = pinchCandidates.find((i) => labelsPresent[i] === this._activeLabel);
+      return sameHand ?? pinchCandidates[0];
+    }
+    if (current >= 0) return current;
+    const right = labelsPresent.indexOf('Right');
+    return right >= 0 ? right : 0;
   }
 
   _toScreen(lm) {
-    const w = this.canvasL.clientWidth || 1;
-    const h = this.canvasL.clientHeight || 1;
-    const nx = 1 - lm.x; // espelha (câmera frontal de trás p/ AR usa traseira; mantém comportamento do launcher)
-    const gx = clamp01(0.5 + (nx - 0.5) * GAIN_X);
-    const gy = clamp01(0.5 + (lm.y - 0.5) * GAIN_Y);
-    return { x: gx * w, y: gy * h };
+    const width = this.canvasL.clientWidth || 1;
+    const height = this.canvasL.clientHeight || 1;
+    const sourceWidth = this.video?.videoWidth || width;
+    const sourceHeight = this.video?.videoHeight || height;
+    const sourceRatio = sourceWidth / sourceHeight;
+    const viewRatio = width / height;
+    let nx = lm.x;
+    let ny = lm.y;
+
+    // Alinha os landmarks com o crop central de object-fit: cover do preview.
+    if (sourceRatio > viewRatio) {
+      const visible = viewRatio / sourceRatio;
+      nx = (nx - (1 - visible) / 2) / visible;
+    } else if (sourceRatio < viewRatio) {
+      const visible = sourceRatio / viewRatio;
+      ny = (ny - (1 - visible) / 2) / visible;
+    }
+
+    // A câmera é traseira e o vídeo está sem espelhamento: não inverter X.
+    const gx = clamp01(0.5 + (clamp01(nx) - 0.5) * GAIN_X);
+    const gy = clamp01(0.5 + (clamp01(ny) - 0.5) * GAIN_Y);
+    return { x: gx * width, y: gy * height };
   }
 
-  _processHand(lms, now) {
-    const tip = this._toScreen(lms[8]);
+  _processHand(landmarks, now) {
+    const handSize = dist2d(landmarks[0], landmarks[9]) || 0.0001;
+    const pinchRatio = dist2d(landmarks[4], landmarks[8]) / handSize;
+    const releasing = this.pinch && pinchRatio > PINCH_OFF;
+    const thumbTip = this._toScreen(landmarks[4]);
+    const indexTip = this._toScreen(landmarks[8]);
+    let target = indexTip;
 
-    // Suavização exponencial do cursor
-    if (!this.cursor.seen) {
-      this.cursor.x = tip.x; this.cursor.y = tip.y; this.cursor.seen = true;
-    } else {
-      const k = this.pinch ? 0.55 : 0.4;
-      this.cursor.x += (tip.x - this.cursor.x) * k;
-      this.cursor.y += (tip.y - this.cursor.y) * k;
+    // Quando os dedos se aproximam, o ponto de toque é o meio da pinça.
+    // Na soltura, congela-se o último ponto fechado para o clique não escapar.
+    if (pinchRatio < 0.55 || this.pinch) {
+      target = { x: (thumbTip.x + indexTip.x) / 2, y: (thumbTip.y + indexTip.y) / 2 };
     }
-    const x = this.cursor.x, y = this.cursor.y;
+    if (releasing && this.cursor.seen) target = { x: this.cursor.x, y: this.cursor.y };
 
-    const handSize = dist2d(lms[0], lms[9]) || 0.0001;
-    const ratio = dist2d(lms[4], lms[8]) / handSize;
-    this.pinchProgress = clamp01((0.6 - ratio) / 0.35);
+    if (!this.cursor.seen) {
+      this.cursor.x = target.x;
+      this.cursor.y = target.y;
+      this.cursor.seen = true;
+    } else {
+      const smooth = this.pinch ? 0.78 : 0.68;
+      this.cursor.x += (target.x - this.cursor.x) * smooth;
+      this.cursor.y += (target.y - this.cursor.y) * smooth;
+    }
+    const x = this.cursor.x;
+    const y = this.cursor.y;
+    this.pinchProgress = clamp01((0.62 - pinchRatio) / 0.38);
 
-    if (!this.pinch && ratio < PINCH_ON) {
-      // Apertou a pinça
+    if (!this.pinch && pinchRatio < PINCH_ON) {
       this.pinch = true;
       this._dragging = false;
       this._pinchStart = { t: now, x, y };
       this._lastPos = { x, y };
       const hit = this._findAt(x, y, now);
-      this._panelHandle = hit && hit.closest ? hit.closest('[data-drag-handle]') : null;
-      this._scrollTarget = hit && hit.closest ? hit.closest('[data-scroll]') : null;
+      this._panelHandle = hit?.closest ? hit.closest('[data-drag-handle]') : null;
+      this._scrollTarget = hit?.closest ? hit.closest('[data-scroll]') : null;
       this._dwellEl = null;
       this._dwellProgress = 0;
-    } else if (this.pinch && ratio > PINCH_OFF) {
-      // Soltou a pinça
-      const dur = now - (this._pinchStart ? this._pinchStart.t : now);
-      const moved = this._pinchStart ? Math.hypot(x - this._pinchStart.x, y - this._pinchStart.y) : 999;
+    } else if (this.pinch && pinchRatio > PINCH_OFF) {
+      // O clique acontece quando o usuário levanta os dedos, como no Quest.
+      const duration = now - (this._pinchStart ? this._pinchStart.t : now);
+      const moved = this._pinchStart ? Math.hypot(x - this._pinchStart.x, y - this._pinchStart.y) : Infinity;
       const wasDragging = this._dragging;
       this.pinch = false;
       this._dragging = false;
       this._scrollTarget = null;
       this._panelHandle = null;
-      if (!wasDragging && dur < TAP_MAX_MS && moved < TAP_MAX_MOVE) {
-        this._clickAt(x, y, now); // pinça rápida = clique (estilo Quest)
+      if (!wasDragging && duration <= TAP_MAX_MS && moved <= TAP_MAX_MOVE) {
+        this._clickAt(x, y, now);
       }
     } else if (this.pinch) {
-      // Segurando: talvez vire arrastar/rolar
       const movedTotal = this._pinchStart ? Math.hypot(x - this._pinchStart.x, y - this._pinchStart.y) : 0;
       if (!this._dragging && movedTotal > DRAG_MIN_MOVE && (this._scrollTarget || this._panelHandle)) {
         this._dragging = true;
@@ -212,48 +370,48 @@ export class HandTracker {
         const dx = x - this._lastPos.x;
         const dy = y - this._lastPos.y;
         if (this._panelHandle) {
-          if (this.opts.onPanelDrag) this.opts.onPanelDrag(dx, dy);
+          this.opts.onPanelDrag?.(dx, dy);
         } else if (this._scrollTarget) {
           this._scrollTarget.scrollTop -= dy;
           this._scrollTarget.scrollLeft -= dx;
-          if (this.opts.onScrollSync) this.opts.onScrollSync(this._scrollTarget);
+          this.opts.onScrollSync?.(this._scrollTarget);
         }
       }
       this._lastPos = { x, y };
     }
 
-    // Dwell: apontar parado sobre um botão clica sozinho
     if (!this.pinch) {
-      const el = this._findAt(x, y, now);
-      const anchorMoved = Math.hypot(x - this._dwellAnchor.x, y - this._dwellAnchor.y) > 8;
-      if (!el || el !== this._dwellEl || anchorMoved) {
-        this._dwellEl = el;
+      const element = this._findAt(x, y, now);
+      const moved = Math.hypot(x - this._dwellAnchor.x, y - this._dwellAnchor.y) > 8;
+      if (!element || element !== this._dwellEl || moved) {
+        this._dwellEl = element;
         this._dwellStart = now;
         this._dwellFired = false;
         this._dwellAnchor = { x, y };
         this._dwellProgress = 0;
-      } else if (el && !this._dwellFired) {
+      } else if (!this._dwellFired) {
         this._dwellProgress = clamp01((now - this._dwellStart) / DWELL_MS);
         if (this._dwellProgress >= 1) {
           this._dwellFired = true;
-          this._activate(el);
+          this._activate(element);
         }
       }
     }
+    this._needsDraw = true;
   }
 
   _clickAt(x, y, now) {
-    const el = this._findAt(x, y, now);
-    if (el) this._activate(el);
+    const element = this._findAt(x, y, now);
+    if (element) this._activate(element);
   }
 
-  _activate(el) {
-    const tag = el.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || el.dataset.kb) {
-      if (this.opts.onInputFocus) this.opts.onInputFocus(el.dataset.kb || null);
+  _activate(element) {
+    const tag = element.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || element.dataset.kb) {
+      this.opts.onInputFocus?.(element.dataset.kb || null);
       return;
     }
-    try { el.click(); } catch (e) {}
+    try { element.click(); } catch (error) {}
     this.invalidate();
   }
 
@@ -262,10 +420,10 @@ export class HandTracker {
     this._cache = [];
     const root = this.opts.getRootEl ? this.opts.getRootEl() : null;
     if (!root) return;
-    const els = root.querySelectorAll('button, a, input, textarea, [data-hit], [data-drag-handle]');
-    for (const el of els) {
-      const r = el.getBoundingClientRect();
-      if (r.width > 0 && r.height > 0) this._cache.push({ el, r });
+    const elements = root.querySelectorAll('button, a, input, textarea, [data-hit], [data-drag-handle]');
+    for (const element of elements) {
+      const rect = element.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) this._cache.push({ el: element, r: rect });
     }
   }
 
@@ -279,104 +437,120 @@ export class HandTracker {
   }
 
   _resizeCanvases() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-    for (const [cv, ctx] of [[this.canvasL, this.ctxL], [this.canvasR, this.ctxR]]) {
-      if (!cv || !ctx) continue;
-      const w = Math.round((cv.clientWidth || 0) * dpr);
-      const h = Math.round((cv.clientHeight || 0) * dpr);
-      if (w > 0 && h > 0 && (cv.width !== w || cv.height !== h)) {
-        cv.width = w; cv.height = h;
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.35);
+    for (const [canvas, context] of [[this.canvasL, this.ctxL], [this.canvasR, this.ctxR]]) {
+      if (!canvas || !context) continue;
+      const width = Math.round((canvas.clientWidth || 0) * dpr);
+      const height = Math.round((canvas.clientHeight || 0) * dpr);
+      if (width > 0 && height > 0 && (canvas.width !== width || canvas.height !== height)) {
+        canvas.width = width;
+        canvas.height = height;
+        context.setTransform(dpr, 0, 0, dpr, 0, 0);
+        this._needsDraw = true;
       }
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
   }
 
   _draw() {
-    const ctx = this.ctxL;
-    const w = this.canvasL.clientWidth, h = this.canvasL.clientHeight;
-    if (!w || !h) return;
-    ctx.clearRect(0, 0, w, h);
+    const context = this.ctxL;
+    const width = this.canvasL.clientWidth;
+    const height = this.canvasL.clientHeight;
+    if (!width || !height) return;
+    context.clearRect(0, 0, width, height);
 
     const style = this.opts.getStyle ? this.opts.getStyle() : 'ghost';
     const hands = this._landmarks;
-
-    hands.forEach((lms, hi) => {
-      const pts = lms.map((lm) => this._toScreen(lm));
+    for (let handIndex = 0; handIndex < hands.length; handIndex++) {
+      const landmarks = hands[handIndex];
+      const points = landmarks.map((landmark) => this._toScreen(landmark));
+      const label = this._handLabels[handIndex];
+      const accent = label === 'Left' ? 'rgba(129, 247, 222, .95)' : 'rgba(213, 202, 255, .95)';
 
       if (style === 'points') {
-        ctx.fillStyle = 'rgba(34,211,238,0.95)';
-        for (const p of pts) {
-          ctx.beginPath(); ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2); ctx.fill();
+        context.fillStyle = accent;
+        for (const point of points) {
+          context.beginPath(); context.arc(point.x, point.y, 3, 0, Math.PI * 2); context.fill();
         }
       } else {
         const neon = style === 'neon';
-        ctx.lineCap = 'round';
-        if (neon) {
-          ctx.strokeStyle = 'rgba(217,70,239,0.35)';
-          ctx.lineWidth = 7;
-          ctx.beginPath();
-          for (const [a, b] of HAND_CONNECTIONS) { ctx.moveTo(pts[a].x, pts[a].y); ctx.lineTo(pts[b].x, pts[b].y); }
-          ctx.stroke();
+        const hull = convexHull(points);
+        context.save();
+        context.lineCap = 'round';
+        context.lineJoin = 'round';
+        if (hull.length > 2) {
+          // Silhueta translúcida mais próxima das mãos-contorno do Quest.
+          context.beginPath();
+          const last = hull[hull.length - 1];
+          const first = hull[0];
+          context.moveTo((last.x + first.x) / 2, (last.y + first.y) / 2);
+          for (let i = 0; i < hull.length; i++) {
+            const point = hull[i];
+            const next = hull[(i + 1) % hull.length];
+            context.quadraticCurveTo(point.x, point.y, (point.x + next.x) / 2, (point.y + next.y) / 2);
+          }
+          context.closePath();
+          context.fillStyle = neon ? 'rgba(74, 207, 235, .09)' : 'rgba(230, 242, 255, .075)';
+          context.fill();
+          context.shadowColor = neon ? 'rgba(104, 234, 255, .78)' : accent;
+          context.shadowBlur = neon ? 12 : 8;
+          context.strokeStyle = neon ? 'rgba(116, 241, 255, .92)' : 'rgba(247, 250, 255, .82)';
+          context.lineWidth = 2.4;
+          context.stroke();
         }
-        ctx.strokeStyle = neon ? 'rgba(34,211,238,0.95)' : 'rgba(255,255,255,0.8)';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        for (const [a, b] of HAND_CONNECTIONS) { ctx.moveTo(pts[a].x, pts[a].y); ctx.lineTo(pts[b].x, pts[b].y); }
-        ctx.stroke();
-        ctx.fillStyle = neon ? 'rgba(165,243,252,0.95)' : 'rgba(255,255,255,0.9)';
-        for (const p of pts) {
-          ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI * 2); ctx.fill();
+        // Linhas internas discretas preservam a leitura dos dedos sem raio.
+        context.shadowBlur = 0;
+        context.strokeStyle = neon ? 'rgba(125, 232, 255, .55)' : 'rgba(241, 246, 255, .43)';
+        context.lineWidth = neon ? 2.1 : 1.7;
+        context.beginPath();
+        for (const [a, b] of HAND_CONNECTIONS) {
+          context.moveTo(points[a].x, points[a].y);
+          context.lineTo(points[b].x, points[b].y);
         }
+        context.stroke();
+        context.fillStyle = neon ? 'rgba(187, 251, 255, .95)' : 'rgba(247, 250, 255, .85)';
+        for (const joint of [0, 4, 8, 12, 16, 20]) {
+          context.beginPath(); context.arc(points[joint].x, points[joint].y, joint === 0 ? 2.4 : 1.9, 0, Math.PI * 2); context.fill();
+        }
+        context.restore();
       }
+    }
 
-      // Laser da palma (só mão principal)
-      if (hi === 0) {
-        const palm = { x: (pts[0].x + pts[9].x) / 2, y: (pts[0].y + pts[9].y) / 2 };
-        const tip = pts[8];
-        const end = { x: tip.x + (tip.x - palm.x) * 1.6, y: tip.y + (tip.y - palm.y) * 1.6 };
-        const grad = ctx.createLinearGradient(palm.x, palm.y, end.x, end.y);
-        grad.addColorStop(0, 'rgba(255,255,255,0.05)');
-        grad.addColorStop(0.55, 'rgba(255,255,255,0.5)');
-        grad.addColorStop(1, 'rgba(255,255,255,0)');
-        ctx.strokeStyle = grad;
-        ctx.lineWidth = 3;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(palm.x, palm.y);
-        ctx.lineTo(end.x, end.y);
-        ctx.stroke();
-      }
-    });
-
-    // Cursor (anel que aperta com a pinça + arco de dwell)
-    if (this.cursor.seen && hands.length > 0) {
+    // Sem feixe/laser: apenas um pequeno marcador no ponto real da pinça.
+    if (this.cursor.seen && hands.length) {
       const { x, y } = this.cursor;
-      const r = 15 - 7 * this.pinchProgress;
-      ctx.strokeStyle = 'rgba(255,255,255,0.95)';
-      ctx.lineWidth = 2.5;
-      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke();
+      const radius = this.pinch ? 10 : 4;
+      context.save();
       if (this.pinch) {
-        ctx.fillStyle = 'rgba(255,255,255,0.35)';
-        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+        context.fillStyle = 'rgba(215, 250, 245, .24)';
+        context.strokeStyle = 'rgba(255, 255, 255, .98)';
+        context.lineWidth = 2;
+        context.beginPath(); context.arc(x, y, radius, 0, Math.PI * 2); context.fill(); context.stroke();
+      } else {
+        context.fillStyle = 'rgba(255, 255, 255, .96)';
+        context.shadowColor = 'rgba(155, 238, 255, .85)';
+        context.shadowBlur = 8;
+        context.beginPath(); context.arc(x, y, radius, 0, Math.PI * 2); context.fill();
       }
-      ctx.fillStyle = 'rgba(255,255,255,0.95)';
-      ctx.beginPath(); ctx.arc(x, y, 2.2, 0, Math.PI * 2); ctx.fill();
       if (!this.pinch && this._dwellEl && !this._dwellFired && this._dwellProgress > 0) {
-        ctx.strokeStyle = 'rgba(34,211,238,0.95)';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.arc(x, y, r + 5, -Math.PI / 2, -Math.PI / 2 + this._dwellProgress * Math.PI * 2);
-        ctx.stroke();
+        context.shadowBlur = 0;
+        context.strokeStyle = 'rgba(95, 226, 235, .98)';
+        context.lineWidth = 2.5;
+        context.beginPath();
+        context.arc(x, y, radius + 7, -Math.PI / 2, -Math.PI / 2 + this._dwellProgress * Math.PI * 2);
+        context.stroke();
       }
+      context.restore();
     }
 
-    // Espelha no olho direito
-    if (this.ctxR && this.canvasR && this.opts.isSBS && this.opts.isSBS()) {
-      const rw = this.canvasR.clientWidth, rh = this.canvasR.clientHeight;
-      if (rw && rh) {
-        this.ctxR.clearRect(0, 0, rw, rh);
-        this.ctxR.drawImage(this.canvasL, 0, 0, rw, rh);
+    // Mesmo traço em ambos os olhos Cardboard; nenhuma segunda inferência.
+    if (this.ctxR && this.canvasR && this.opts.isSBS?.()) {
+      const rightWidth = this.canvasR.clientWidth;
+      const rightHeight = this.canvasR.clientHeight;
+      if (rightWidth && rightHeight) {
+        this.ctxR.clearRect(0, 0, rightWidth, rightHeight);
+        this.ctxR.drawImage(this.canvasL, 0, 0, rightWidth, rightHeight);
       }
     }
+    this._needsDraw = false;
   }
 }

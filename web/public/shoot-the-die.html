@@ -497,10 +497,10 @@
                 for (let i = 0; i < results.multiHandLandmarks.length; i++) {
                     const landmarks = results.multiHandLandmarks[i];
                     
-                    // CORREÇÃO DA CÂMERA REVERTIDA:
-                    // Invertemos a verificação do lado da mão (Left/Right) para a câmera traseira
-                    const detectedHand = results.multiHandedness[i].label;
-                    const isRightHand = (detectedHand === 'Left'); 
+                    // O launcher normaliza Left/Right para a câmera traseira não espelhada.
+                    // A mão direita controla a arma; a esquerda controla a lanterna.
+                    const detectedHand = (results.multiHandedness[i] && results.multiHandedness[i].label) || '';
+                    const isRightHand = detectedHand === 'Right' || (!detectedHand && results.multiHandLandmarks.length === 1);
 
                     const wrist = landmarks[0];
                     const middle = landmarks[9];
@@ -516,7 +516,7 @@
                     const dy = middle.y - wrist.y;
                     const rotZ = Math.atan2(dx, dy) + Math.PI;
 
-                    if (isRightHand || results.multiHandLandmarks.length === 1) {
+                    if (isRightHand) {
                         // Mão Direita -> Arma (Posição e rotação aplicadas corretamente)
                         gunPosTarget.set(targetX, targetY, targetZ);
                         gunRotTarget.set(0, 0, -rotZ * 0.5);
