@@ -5,13 +5,13 @@ import { buildEnvironment, disposeGroup } from './environments';
 /* ============================================================
    Engine VR do ATMOXR
    - Cena Three.js + painel DOM via CSS3DRenderer (um por olho)
-   - Side-by-Side p/ Google Cardboard 2015 (FOV 90, IPD 64mm)
+   - SBS Cardboard 2015 (FOV 90, perfil IPD 64mm; imagem duplicada nos olhos)
    - Giroscópio suavizado na taxa da tela (nada de olhar "duro")
    - Painel desliza atrás do olhar com amortecimento (estilo Quest);
      World Lock congela o painel no mundo quando ligado.
    ============================================================ */
 
-const PANEL_SCALE = 0.0016;   // 960px -> ~1,54m de largura
+const PANEL_SCALE = 0.0022;   // 960px -> ~2,11m; aproxima as janelas da referência
 const PANEL_DIST = 1.75;      // metros à frente
 const IPD = 0.064;            // Cardboard 2015
 const FOV = 90;               // Cardboard 2015
@@ -21,6 +21,9 @@ export class Engine {
     this.opts = opts;
     this.mount = mount;
     this.sbs = false;
+    this.cardboardProfile = Object.freeze({ fov: FOV, ipd: IPD });
+    this.panelElL = panelElL;
+    this.panelElR = panelElR;
     this.worldLock = false;
     this.paused = false;
     this._running = false;
@@ -50,6 +53,7 @@ export class Engine {
     this.panelRig.add(this.panelObjL, this.panelObjR);
     this.panelPos = new THREE.Vector3(0, -0.05, -PANEL_DIST);
     this.drag = { x: 0, y: 0 };
+    this.dockDrag = { x: 0, y: 0 };
 
     // Renderizadores
     this.gl = new THREE.WebGLRenderer({ alpha: true, antialias: false, powerPreference: 'high-performance' });
@@ -127,8 +131,11 @@ export class Engine {
 
   setSBS(v) {
     this.sbs = !!v;
-    this.camL.position.x = this.sbs ? -IPD / 2 : 0;
-    this.camR.position.x = IPD / 2;
+    // Preferência visual do ATMOXR: duplicar a mesma imagem nos dois olhos.
+    // O perfil Cardboard 2015 (FOV 90°, IPD 64 mm) continua registrado, mas
+    // a separação física fica zerada para que as lentes sejam idênticas.
+    this.camL.position.set(0, 0, 0);
+    this.camR.position.set(0, 0, 0);
     this.cssR.domElement.style.display = this.sbs ? 'block' : 'none';
     this.resize();
   }
@@ -173,6 +180,24 @@ export class Engine {
     this.drag.x = THREE.MathUtils.clamp(this.drag.x + dxPx * PANEL_SCALE, -0.9, 0.9);
     this.drag.y = THREE.MathUtils.clamp(this.drag.y - dyPx * PANEL_SCALE, -0.6, 0.6);
     this._applyPanel();
+  }
+
+  addDockDrag(dxPx, dyPx) {
+    // CSS3D reduz o deslocamento aparente; compensamos a escala do painel
+    // para a barra branca acompanhar a pinça em pixels de tela.
+    this.dockDrag.x = THREE.MathUtils.clamp(this.dockDrag.x + dxPx * 2.2, -220, 220);
+    this.dockDrag.y = THREE.MathUtils.clamp(this.dockDrag.y - dyPx * 2.2, -130, 130);
+    this._applyDockDrag();
+  }
+
+  _applyDockDrag() {
+    const x = `${this.dockDrag.x}px`;
+    const y = `${this.dockDrag.y}px`;
+    for (const panel of [this.panelElL, this.panelElR]) {
+      if (!panel) continue;
+      panel.style.setProperty('--dock-offset-x', x);
+      panel.style.setProperty('--dock-offset-y', y);
+    }
   }
 
   _applyPanel() {

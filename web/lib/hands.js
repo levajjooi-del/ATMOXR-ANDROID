@@ -177,6 +177,7 @@ export class HandTracker {
     this._dragging = false;
     this._scrollTarget = null;
     this._panelHandle = null;
+    this._dockHandle = null;
     this._lastPos = null;
     this._dwellEl = null;
     this._dwellStart = 0;
@@ -281,6 +282,9 @@ export class HandTracker {
       this.cursor.seen = false;
       this.pinch = false;
       this._dragging = false;
+      this._scrollTarget = null;
+      this._panelHandle = null;
+      this._dockHandle = null;
       this._needsDraw = true;
       return;
     }
@@ -305,6 +309,7 @@ export class HandTracker {
         this._dragging = false;
         this._scrollTarget = null;
         this._panelHandle = null;
+        this._dockHandle = null;
         this._pinchStart = null;
       }
       this._needsDraw = true;
@@ -421,7 +426,8 @@ export class HandTracker {
       this._pinchStart = { t: now, x, y };
       this._lastPos = { x, y };
       const hit = this._findAt(x, y, now);
-      this._panelHandle = hit?.closest ? hit.closest('[data-drag-handle]') : null;
+      this._dockHandle = hit?.closest ? hit.closest('[data-dock-handle]') : null;
+      this._panelHandle = this._dockHandle ? null : (hit?.closest ? hit.closest('[data-drag-handle]') : null);
       this._scrollTarget = hit?.closest ? hit.closest('[data-scroll]') : null;
       this._dwellEl = null;
       this._dwellProgress = 0;
@@ -434,18 +440,21 @@ export class HandTracker {
       this._dragging = false;
       this._scrollTarget = null;
       this._panelHandle = null;
+      this._dockHandle = null;
       if (!wasDragging && duration <= TAP_MAX_MS && moved <= TAP_MAX_MOVE) {
         this._clickAt(x, y, now);
       }
     } else if (this.pinch) {
       const movedTotal = this._pinchStart ? Math.hypot(x - this._pinchStart.x, y - this._pinchStart.y) : 0;
-      if (!this._dragging && movedTotal > DRAG_MIN_MOVE && (this._scrollTarget || this._panelHandle)) {
+      if (!this._dragging && movedTotal > DRAG_MIN_MOVE && (this._scrollTarget || this._panelHandle || this._dockHandle)) {
         this._dragging = true;
       }
       if (this._dragging && this._lastPos) {
         const dx = x - this._lastPos.x;
         const dy = y - this._lastPos.y;
-        if (this._panelHandle) {
+        if (this._dockHandle) {
+          this.opts.onDockDrag?.(dx, dy);
+        } else if (this._panelHandle) {
           this.opts.onPanelDrag?.(dx, dy);
         } else if (this._scrollTarget) {
           this._scrollTarget.scrollTop -= dy;
@@ -496,7 +505,7 @@ export class HandTracker {
     this._cache = [];
     const root = this.opts.getRootEl ? this.opts.getRootEl() : null;
     if (!root) return;
-    const elements = root.querySelectorAll('button, a, input, textarea, [data-hit], [data-drag-handle]');
+    const elements = root.querySelectorAll('button, a, input, textarea, [data-hit], [data-drag-handle], [data-dock-handle]');
     for (const element of elements) {
       const rect = element.getBoundingClientRect();
       if (rect.width > 0 && rect.height > 0) this._cache.push({ el: element, r: rect });
@@ -580,10 +589,14 @@ export class HandTracker {
       const radius = this.pinch ? 8.5 : 4;
       context.save();
       if (this.pinch) {
-        context.fillStyle = '#27e8ff';
-        context.shadowColor = '#00dfff';
+        context.fillStyle = '#3478ff';
+        context.shadowColor = '#1764ff';
         context.shadowBlur = 14;
         context.beginPath(); context.arc(x, y, radius, 0, Math.PI * 2); context.fill();
+        context.shadowBlur = 0;
+        context.strokeStyle = 'rgba(220, 232, 255, .95)';
+        context.lineWidth = 1.4;
+        context.beginPath(); context.arc(x, y, radius, 0, Math.PI * 2); context.stroke();
       } else {
         context.fillStyle = 'rgba(255, 255, 255, .96)';
         context.shadowColor = 'rgba(155, 238, 255, .85)';

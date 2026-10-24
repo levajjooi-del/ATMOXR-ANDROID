@@ -2,6 +2,10 @@ plugins {
     id 'com.android.application'
 }
 
+def atmoxrKeystorePath = System.getenv('ATMOXR_SIGNING_KEYSTORE')
+def atmoxrSigningPassword = System.getenv('ATMOXR_SIGNING_PASSWORD')
+def hasAtmoxrSigning = atmoxrKeystorePath && atmoxrSigningPassword
+
 android {
     namespace 'com.atmoxr.app'
     compileSdk 34
@@ -10,16 +14,30 @@ android {
         applicationId 'com.atmoxr.app'
         minSdk 26
         targetSdk 34
-        versionCode 7
-        versionName '4.2'
+        versionCode 8
+        versionName '4.3'
+    }
+
+    signingConfigs {
+        if (hasAtmoxrSigning) {
+            atmoxr {
+                storeFile file(atmoxrKeystorePath)
+                storePassword atmoxrSigningPassword
+                keyAlias 'atmoxr'
+                keyPassword atmoxrSigningPassword
+                storeType 'PKCS12'
+            }
+        }
     }
 
     buildTypes {
         debug {
             minifyEnabled false
+            if (hasAtmoxrSigning) signingConfig signingConfigs.atmoxr
         }
         release {
             minifyEnabled false
+            if (hasAtmoxrSigning) signingConfig signingConfigs.atmoxr
         }
     }
 

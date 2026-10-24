@@ -7,16 +7,16 @@ Launcher WebXR-inspired para Android, feito em **Next.js + React + Three.js** e 
 **Link direto permanente:** https://github.com/levajjooi-del/ATMOXR-ANDROID/releases/download/apk-latest/ATMOXR.apk
 **Pull request:** https://github.com/levajjooi-del/ATMOXR-ANDROID/pull/1
 
-O GitHub Actions gera o APK e atualiza a release `apk-latest`. Requer Android 8+, câmera traseira, giroscópio e internet para carregar o MediaPipe e os sites. Na primeira abertura, autorize a câmera; a resolução solicitada é 640×480 a até 30 fps para reduzir a carga no celular.
+O GitHub Actions valida o app e atualiza a release `apk-latest` somente quando a assinatura persistente está configurada. Requer Android 8+, câmera traseira, giroscópio e internet para carregar o MediaPipe e os sites. Na primeira abertura, autorize a câmera; a resolução solicitada é 640×480 a até 30 fps para reduzir a carga no celular.
 
-## O que há no ATMOXR 4.2
+## O que há no ATMOXR 4.3
 
 - **Biblioteca inicial** em janela flutuante e dock inferior permanente, usando os glifos e fundos PNG da referência Aura enviada (sem emojis como ícones de app).
-- **Dock recuada ao plano da interface**, com relógio, estado Cardboard e atalhos Aura para Navegador, Calculadora, Calendário, Câmera, Relógio, Threads, Facebook, Arquivos, Galeria, Ajuda, Instagram, Área de trabalho remota, Ajustes, Loja, Mensagens, TV/YouTube e WhatsApp. O botão de grade abre a Biblioteca.
+- **Dock próxima às lentes e visível nos dois olhos**, com relógio, estado Cardboard e atalhos Aura para Navegador, Calculadora, Calendário, Câmera, Relógio, Threads, Facebook, Arquivos, Galeria, Ajuda, Instagram, Área de trabalho remota, Ajustes, Loja, Mensagens, TV/YouTube e WhatsApp. A barra branca move a dock sem deslocar as janelas; o botão de grade abre a Biblioteca.
 - **Navegador inspirado na interface Quest**: seta de voltar, barra de pesquisa/endereço com botão “Procurar” e favoritos com ícones próprios.
-- **Janelas flutuantes renovadas** para Biblioteca, Loja, Navegador, YouTube, Relógio e Ajustes; busca/filtro e controles organizados em Ajustes rápidos.
-- **Cardboard 2015 ligado por padrão**: renderização SBS, FOV 90° e IPD 0,064 m, com máscara de duas lentes e vinheta circular. World Lock começa desligado.
-- **Recentração somente ao abrir apps**; painel e cabeça continuam com suavização amortecida. Grip e dock ficam recuados, no plano da interface.
+- **Janelas flutuantes ampliadas, próximas às proporções da referência** para Biblioteca, Loja, Navegador, Relógio e Ajustes; o YouTube abre em uma janela compacta e pode ser pesquisado em `youtube.com`.
+- **Cardboard 2015 ligado por padrão**: SBS com a mesma imagem duplicada nas duas lentes, máscara circular dupla e FOV 90°. O perfil mantém o IPD 0,064 m como referência; a separação de câmera é zerada para atender à imagem idêntica solicitada. World Lock começa desligado.
+- **Recentração somente ao abrir apps**; painel e cabeça continuam com suavização amortecida. A barra branca arrasta a dock de forma independente, elevada e mais próxima do usuário.
 - **Hand tracking por contorno azul**, construído pelas laterais dos cinco dedos (sem convex hull, preenchimento ou “bola”). O mesmo tracker e a mesma câmera alimentam o launcher e o ShootTheDie; o jogo exibe o contorno nos dois olhos SBS e usa pinça para atirar, sem abrir um segundo tracker.
 - **Câmera traseira sem espelhamento**: corrige Left/Right do MediaPipe e alinha os landmarks ao recorte `object-fit: cover`. A mão direita controla a arma e a esquerda a lanterna.
 - **Pinça sem feixe**: o ponto de interação fica entre polegar e indicador; apertar segura/arrasta e levantar os dedos conclui o clique. O cursor de pinça usa o marcador azul do HTML de referência.
@@ -52,3 +52,7 @@ npm run build
 O `postbuild` renomeia `_next/` para `next/` e atualiza as referências: o empacotador de assets do Android pode ignorar nomes iniciados por `_`. O workflow também verifica se `assets/next/static/chunks/`, a página inicial, a logo e o jogo estão dentro do APK e falha antes de publicar se o arquivo ficar incompleto.
 
 O APK é construído pelo GitHub Actions com JDK 17, Gradle 8.7 e Android SDK 34. Build Android local requer essas ferramentas instaladas.
+
+## Assinatura e atualização do APK
+
+As builds de distribuição usam uma assinatura Android persistente, fornecida ao workflow pelos segredos do GitHub Actions `ATMOXR_SIGNING_KEYSTORE_BASE64` (keystore PKCS#12 em Base64) e `ATMOXR_SIGNING_PASSWORD` (senha do keystore/chave; alias `atmoxr`). O workflow não publica APK se esses segredos estiverem ausentes; builds de PR continuam usando a assinatura de debug apenas para validação. **A primeira instalação assinada de forma estável pode exigir remover uma vez o APK 4.2**, pois a chave temporária das builds antigas não está disponível. Depois dessa migração, a assinatura persistente permite atualizar sem conflito. A chave privada nunca deve ser colocada no repositório.

@@ -24,7 +24,7 @@ const APPS = [
 const DEFAULT_INSTALLED = APPS.filter((app) => !app.fixed).map((app) => app.id);
 const SHORTCUTS = [
   { name: 'Google', icon: 'browser', tone: 'browser', url: 'https://www.google.com' },
-  { name: 'YouTube', icon: 'youtube', tone: 'tv', url: 'https://www.youtube.com' },
+  { name: 'YouTube', icon: 'youtube', tone: 'tv', url: 'https://youtube.com' },
   { name: 'Instagram', icon: 'instagram', tone: 'instagram', url: 'https://www.instagram.com' },
   { name: 'Facebook', icon: 'facebook', tone: 'facebook', url: 'https://www.facebook.com' },
   { name: 'Threads', icon: 'threads', tone: 'threads', url: 'https://www.threads.net' },
@@ -58,7 +58,7 @@ const INSTALLED_KEY = 'atmoxr_installed_apps';
 const HAND_STYLE_KEY = 'atmoxr_hand_style';
 
 function ytEmbed(q) {
-  return 'https://www.youtube-nocookie.com/embed?listType=search&list=' + encodeURIComponent(q);
+  return 'https://www.youtube.com/embed?listType=search&list=' + encodeURIComponent(q);
 }
 function loadInstalled() {
   try {
@@ -200,6 +200,7 @@ export default function Launcher() {
         }
       },
       onPanelDrag: (dx, dy) => engine.addPanelDrag(dx, dy),
+      onDockDrag: (dx, dy) => engine.addDockDrag(dx, dy),
       onScrollSync: (el) => syncScroll(el),
       onInputFocus: (kb) => { setKbTarget(kb); afterUiChange(); },
     });
@@ -548,7 +549,7 @@ export default function Launcher() {
       <div className="settings-list" data-scroll="" data-scroll-key="settings">
         <button className="setting-row" onClick={toggleSbs}>
           <span className="setting-icon aura-icon-wrap aura-browser"><AuraIcon name="headset" size={24} /></span>
-          <span className="setting-copy"><strong>Cardboard 2015</strong><small>Visualização lado a lado (SBS)</small></span>
+          <span className="setting-copy"><strong>Cardboard 2015</strong><small>Mesma imagem duplicada nas duas lentes</small></span>
           <span className={`setting-toggle ${sbs ? 'on' : ''}`}><span /></span>
         </button>
         <button className="setting-row" onClick={toggleLock}>
@@ -641,7 +642,7 @@ export default function Launcher() {
 
   const renderGroup = (eye) => (
     <div
-      className="window-group"
+      className={`window-group window-group-${eye.toLowerCase()}`}
       key={eye}
       ref={eye === 'L' ? panelLRef : panelRRef}
       aria-hidden={eye === 'R'}
@@ -654,7 +655,7 @@ export default function Launcher() {
       {win === 'settings' && renderSettings()}
       {win === 'clock' && renderClock()}
       {kbTarget && renderKeyboard()}
-      <div className="move-handle" data-drag-handle="" title="Arraste para mover"><span /></div>
+      <div className="move-handle" data-dock-handle="" title="Arraste para mover a dock"><span /></div>
       {renderDock()}
     </div>
   );
@@ -693,8 +694,8 @@ export default function Launcher() {
           <img className="start-logo" src="/logo.jpg" alt="ATMOXR" />
           <p>
             Mostre as mãos para a câmera e controle tudo com gestos: aponte para mirar,{' '}
-            <strong>pinça rápida para clicar</strong>, pinça segurando para rolar e arrastar.
-            O modo Cardboard (side-by-side) já entra ativado.
+            <strong>pinça rápida para escolher apps e opções</strong> (a bolinha fica azul);
+            mantenha a pinça na barra branca para mover a dock. O modo Cardboard já entra ativado.
           </p>
           {startError && <p className="start-error">{startError}</p>}
           <button className="start-btn" disabled={starting}>

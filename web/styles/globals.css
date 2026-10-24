@@ -33,7 +33,7 @@ input { font-family: inherit; }
 .xr-root.sbs .cardboard-optics { display: block; }
 .cardboard-lens {
   position: absolute; top: 0; bottom: 0; width: 50%;
-  background: radial-gradient(ellipse 68% 76% at 50% 50%, transparent 0 60%, rgba(0,0,0,.08) 70%, rgba(0,0,0,.42) 86%, #000 100%);
+  background: radial-gradient(ellipse 58% 68% at 50% 50%, transparent 0 60%, rgba(0,0,0,.08) 70%, rgba(0,0,0,.42) 86%, #000 100%);
 }
 .cardboard-lens-left { left: 0; }
 .cardboard-lens-right { right: 0; }
@@ -88,6 +88,10 @@ input { font-family: inherit; }
   box-shadow: 0 25px 72px rgba(0, 0, 0, .56), 0 3px 20px rgba(80, 130, 255, .11), inset 0 1px 0 rgba(255, 255, 255, .08);
   transform: translateZ(-18px); transform-style: preserve-3d;
 }
+.youtube-window {
+  width: 560px; height: 330px; flex: 0 0 330px; align-self: flex-end;
+  margin: auto 10px 0 0;
+}
 .win::before {
   content: ''; position: absolute; top: 0; left: 18%; right: 18%; height: 1px; z-index: 2;
   background: linear-gradient(90deg, transparent, rgba(155, 226, 255, .72), rgba(190, 155, 255, .68), transparent);
@@ -136,19 +140,21 @@ input { font-family: inherit; }
 .aura-tv       { background: url('/aura-icons/tv-bg.png') center / cover no-repeat, linear-gradient(145deg, #a532d5, #dd6ed5); }
 .aura-whatsapp { background: url('/aura-icons/whatsapp-bg.png') center / cover no-repeat, linear-gradient(145deg, #08a950, #42d87b); }
 
-/* Grip and dock ficam recuados, alinhados ao plano da interface. */
+/* Barra branca para mover somente a dock; a dock fica elevada e perto da lente. */
 .move-handle {
   flex: 0 0 auto; height: 18px; margin-top: 4px; display: flex; align-items: center; justify-content: center;
-  transform: translateZ(-18px); cursor: grab;
+  position: relative; z-index: 4; transform: translate3d(var(--dock-offset-x, 0px), var(--dock-offset-y, 0px), 72px);
+  cursor: grab; touch-action: none;
 }
-.move-handle span { width: 48px; height: 4px; border-radius: 99px; background: rgba(239, 244, 255, .88); box-shadow: 0 1px 10px rgba(220, 236, 255, .28); }
+.move-handle span { width: 58px; height: 5px; border-radius: 99px; background: rgba(255, 255, 255, .96); box-shadow: 0 1px 12px rgba(220, 236, 255, .42); }
 .dock {
   flex: 0 0 auto; align-self: center; width: 948px; height: 64px; margin-top: auto; padding: 0 11px;
   display: flex; align-items: center; gap: 8px; border-radius: 22px;
   background: linear-gradient(180deg, rgba(39, 43, 53, .97), rgba(16, 18, 25, .98));
   border: 1px solid rgba(255, 255, 255, .17);
   box-shadow: 0 16px 42px rgba(0, 0, 0, .54), 0 0 18px rgba(96, 129, 255, .12), inset 0 1px 0 rgba(255,255,255,.1);
-  transform: translateZ(-18px); transform-style: preserve-3d;
+  position: relative; z-index: 3;
+  transform: translate3d(var(--dock-offset-x, 0px), var(--dock-offset-y, 0px), 72px); transform-style: preserve-3d;
 }
 .dock-avatar {
   width: 34px; height: 34px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
