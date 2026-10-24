@@ -3,6 +3,7 @@ package com.atmoxr.app;
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.AssetManager;
 import android.net.Uri;
@@ -67,6 +68,32 @@ public class MainActivity extends Activity {
         s.setSupportZoom(false);
 
         webView.setWebViewClient(new WebViewClient() {
+            // Links intent:// (tiles do Minecraft/Roblox) abrem o app nativo;
+            // se ele não estiver instalado, cai para a Play Store.
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                Uri url = request.getUrl();
+                if (url != null && "intent".equals(url.getScheme())) {
+                    try {
+                        Intent intent = Intent.parseUri(url.toString(), Intent.URI_INTENT_SCHEME);
+                        startActivity(intent);
+                    } catch (Exception e) {
+                        try {
+                            String str = url.toString();
+                            int i = str.indexOf("package=");
+                            if (i >= 0) {
+                                int j = str.indexOf(';', i);
+                                String pkg = str.substring(i + 8, j > i ? j : str.length());
+                                startActivity(new Intent(Intent.ACTION_VIEW,
+                                        Uri.parse("market://details?id=" + pkg)));
+                            }
+                        } catch (Exception ignored) {}
+                    }
+                    return true;
+                }
+                return false;
+            }
+
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 Uri url = request.getUrl();
@@ -76,8 +103,9 @@ public class MainActivity extends Activity {
                     try {
                         AssetManager am = getAssets();
                         InputStream input = am.open(path.substring(1));
-                        String mime = path.endsWith(".html") ? "text/html" : "application/octet-stream";
-                        return new WebResourceResponse(mime, "UTF-8", input);
+                        String mime = mimeFor(path);
+                        String encoding = (mime.startsWith("text/") || mime.equals("application/json")) ? "UTF-8" : null;
+                        return new WebResourceResponse(mime, encoding, input);
                     } catch (IOException e) {
                         return new WebResourceResponse("text/plain", "UTF-8", null);
                     }
