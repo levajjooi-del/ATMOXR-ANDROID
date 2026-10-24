@@ -1,4 +1,4 @@
-name: Build APK (PotatoVR)
+name: Build APK (ATMOXR)
 
 on:
   push:
@@ -45,16 +45,16 @@ jobs:
       - name: Build debug APK
         run: gradle assembleDebug --no-daemon --stacktrace
 
-      - name: Prepare PotatoVR.apk
+      - name: Prepare ATMOXR.apk
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk PotatoVR.apk
-          ls -lh PotatoVR.apk
+          cp app/build/outputs/apk/debug/app-debug.apk ATMOXR.apk
+          ls -lh ATMOXR.apk
 
       - name: Upload APK as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PotatoVR-apk
-          path: PotatoVR.apk
+          name: ATMOXR-apk
+          path: ATMOXR.apk
           if-no-files-found: error
 
       - name: Publish APK to Release (link direto permanente)
@@ -62,15 +62,15 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: apk-latest
-          name: "PotatoVR — APK mais recente"
+          name: "ATMOXR — APK mais recente"
           body: |
-            APK do **PotatoVR** gerado automaticamente a partir do `index.html` otimizado.
+            APK do **ATMOXR** gerado automaticamente a partir do `index.html` otimizado.
 
-            📲 Baixe o arquivo **PotatoVR.apk** abaixo e instale no Android
+            📲 Baixe o arquivo **ATMOXR.apk** abaixo e instale no Android
             (pode ser necessário permitir "instalar de fontes desconhecidas").
 
             Requer: Android 8+, câmera traseira, giroscópio e internet no primeiro uso
             (as bibliotecas Three.js/MediaPipe são carregadas de CDN).
-          files: PotatoVR.apk
+          files: ATMOXR.apk
           fail_on_unmatched_files: true
           make_latest: true

@@ -1,4 +1,4 @@
-# ATMOXR-ANDROID — PotatoVR 🥔🥽
+# ATMOXR-ANDROID — ATMOXR 🥽
 
 Launcher VR/AR para Android feito em HTML5 (Three.js + MediaPipe Hands),
 pensado para rodar liso até em celular fraco: passthrough de câmera,
@@ -8,7 +8,7 @@ ilha 3D imersiva e jogos (Shoot The Die, Dreamcore, Cozinha) — com modo
 
 ## 📲 Baixar o APK (link direto)
 
-➡️ **https://github.com/levajjooi-del/ATMOXR-ANDROID/releases/download/apk-latest/PotatoVR.apk**
+➡️ **https://github.com/levajjooi-del/ATMOXR-ANDROID/releases/download/apk-latest/ATMOXR.apk**
 
 O APK é compilado automaticamente pelo GitHub Actions a cada atualização e
 publicado na release `apk-latest`.
@@ -16,6 +16,30 @@ publicado na release `apk-latest`.
 **Requisitos:** Android 8+, câmera, giroscópio e internet (Three.js e
 MediaPipe são carregados de CDN). Para instalar, permita "fontes
 desconhecidas" quando o Android pedir.
+
+## ✨ Novidades da v3 (ATMOXR)
+
+- **Marca nova:** tudo que era "Potato" virou **ATMOXR** (nome, ícone com a logo
+  oficial, tela inicial com a logo, pacote `com.atmoxr.app`). Apps instalados
+  da versão antiga são migrados automaticamente.
+- **Interface Horizon (estilo Meta Quest):** biblioteca em grade de blocos
+  coloridos, dock em formato de pílula flutuante com relógio, navegador
+  escuro com página inicial de atalhos (YouTube, Spotify, Instagram, X,
+  Twitch, TikTok, Netflix, WhatsApp) e painéis escuros combinando.
+- **Side-by-Side ligado de fábrica:** o modo Cardboard 2015 já entra ativado.
+- **Dock corrigida e sempre embaixo:** altura fixa do grupo + `margin-top:auto`
+  — a dock não "flutua" mais quando nenhuma janela está aberta.
+- **Nada de painel "duro":** giroscópio suavizado na taxa da tela e painel que
+  **desliza** atrás do olhar (seguir-cabeça com amortecimento estilo Quest).
+  World Lock agora vem desligado por padrão.
+- **Recentrar ao abrir apps:** Biblioteca/Loja/Google/YouTube abrem bem na
+  frente do jogador; no Shoot The Die, a direção do olhar vira a "frente".
+- **Hand Tracking estilo Quest 3S:** mão fantasma branca ("Quest Fantasma"),
+  **laser** saindo da palma, cursor que aperta com a pinça e **clique por
+  pinça rápida** (soltar = clicar; arrastar segurando = rolar/mover).
+- **Mais FPS:** removido o `backdrop-filter` dos painéis grandes (vilão nº 1
+  em celular fraco) e o hit-test da mão agora usa retângulos cacheados — sem
+  varrer o DOM nem forçar reflow a cada frame.
 
 ## ✨ O que foi otimizado nesta versão
 

@@ -1,4 +1,4 @@
-package com.atmoxr.potatovr;
+package com.atmoxr.app;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
@@ -24,17 +24,17 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * PotatoVR — wrapper Android mínimo e rápido:
+ * ATMOXR — wrapper Android mínimo e rápido:
  *  - WebView em tela cheia imersiva, paisagem, com aceleração de hardware;
  *  - o jogo (assets/index.html) é servido sob uma origem HTTPS local
- *    (https://potatovr.atmoxr.local/) p/ o getUserMedia (câmera) funcionar
+ *    (https://app.atmoxr.local/) p/ o getUserMedia (câmera) funcionar
  *    como "contexto seguro" dentro da WebView;
  *  - permissão de câmera é pedida em runtime e concedida à página.
  */
 public class MainActivity extends Activity {
 
     private static final int REQ_CAMERA = 42;
-    private static final String APP_HOST = "potatovr.atmoxr.local";
+    private static final String APP_HOST = "app.atmoxr.local";
     private static final String START_URL = "https://" + APP_HOST + "/index.html";
 
     private WebView webView;
