@@ -98,7 +98,8 @@ jobs:
           echo "APK size: $SIZE bytes"
           test "$SIZE" -gt 350000
 
-      - name: Upload APK as artifact
+      - name: Upload signed APK as artifact
+        if: steps.signing.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: ATMOXR-apk
