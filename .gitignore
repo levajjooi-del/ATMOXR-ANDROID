@@ -1,0 +1,9 @@
+# Build do Android
+/.gradle/
+/app/build/
+/build/
+local.properties
+*.apk
+
+# O index.html canônico fica na raiz; a cópia em assets é gerada no build (CI)
+app/src/main/assets/index.html
