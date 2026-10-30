@@ -1,0 +1,14 @@
+# Build do Android
+/.gradle/
+/app/build/
+/build/
+local.properties
+*.apk
+
+# Os assets web são gerados no build (export do Next.js copiado pelo CI)
+app/src/main/assets/
+
+# Node / Next.js (projeto em web/)
+node_modules/
+web/.next/
+web/out/

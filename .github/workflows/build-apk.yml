@@ -1,0 +1,126 @@
+name: Build APK (dixVR)
+
+on:
+  push:
+    branches:
+      - main
+      - "arena/**"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # Os runners ubuntu do GitHub já trazem o Android SDK (API 34) instalado.
+      - name: Check Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME/platforms"
+          ls "$ANDROID_HOME/build-tools"
+
+      - name: Set up Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build web app (Next.js export estático)
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Copy web export into Android assets
+        run: |
+          rm -rf app/src/main/assets
+          mkdir -p app/src/main/assets
+          cp -r web/out/. app/src/main/assets/
+          ls -lh app/src/main/assets/
+
+      # As builds antigas usavam a chave debug efêmera do runner. A release só
+      # pode ser atualizada quando a keystore persistente vier dos Actions secrets.
+      - name: Configure persistent APK signing
+        id: signing
+        env:
+          ATMOXR_SIGNING_KEYSTORE_BASE64: ${{ secrets.ATMOXR_SIGNING_KEYSTORE_BASE64 }}
+          ATMOXR_SIGNING_PASSWORD: ${{ secrets.ATMOXR_SIGNING_PASSWORD }}
+        run: |
+          if [ -z "$ATMOXR_SIGNING_KEYSTORE_BASE64" ] || [ -z "$ATMOXR_SIGNING_PASSWORD" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Segredos de assinatura ausentes; o APK será validado como build de PR, mas não será publicado na release."
+            exit 0
+          fi
+          KEYSTORE_PATH="$RUNNER_TEMP/atmoxr-release.p12"
+          printf '%s' "$ATMOXR_SIGNING_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          test -s "$KEYSTORE_PATH"
+          chmod 600 "$KEYSTORE_PATH"
+          echo "ATMOXR_SIGNING_KEYSTORE=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+          echo "ATMOXR_SIGNING_PASSWORD=$ATMOXR_SIGNING_PASSWORD" >> "$GITHUB_ENV"
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build APK
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Prepare ATMOXR.apk
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk ATMOXR.apk
+          ls -lh ATMOXR.apk
+
+      # Trava de segurança: se o JS do Next (pasta next/, ex-_next) não
+      # estiver DENTRO do APK, o build falha em vez de publicar um app oco.
+      - name: Verify APK contents
+        run: |
+          unzip -l ATMOXR.apk > /tmp/apklist.txt
+          grep -q "assets/index.html" /tmp/apklist.txt
+          grep -q "assets/next/static/chunks/" /tmp/apklist.txt
+          grep -q "assets/shoot-the-die.html" /tmp/apklist.txt
+          grep -q "assets/logo.jpg" /tmp/apklist.txt
+          SIZE=$(stat -c %s ATMOXR.apk)
+          echo "APK size: $SIZE bytes"
+          test "$SIZE" -gt 350000
+
+      - name: Upload signed APK as artifact
+        if: steps.signing.outputs.enabled == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ATMOXR-apk
+          path: ATMOXR.apk
+          if-no-files-found: error
+
+      - name: Publish APK to Release (link direto permanente)
+        if: github.event_name != 'pull_request' && steps.signing.outputs.enabled == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-latest
+          name: "dixVR — APK mais recente"
+          body: |
+            APK do **dixVR 4.3** gerado automaticamente do projeto `web/`
+            (Next.js + React + Three.js — imagem duplicada nas duas lentes, dock próxima e arrastável, YouTube compacto e contorno de mãos no ShootTheDie). Assinado com a chave persistente do dixVR.
+
+            📲 Baixe o arquivo **ATMOXR.apk** abaixo e instale no Android
+            (pode ser necessário permitir "instalar de fontes desconhecidas"). A primeira atualização a partir das builds 4.2 pode exigir remover o APK antigo uma vez; as próximas atualizações mantêm a mesma assinatura.
+
+            Requer: Android 8+, câmera traseira, giroscópio e internet
+            (o rastreamento de mãos usa o MediaPipe via CDN; Three.js já vai embutido).
+          files: ATMOXR.apk
+          fail_on_unmatched_files: true
+          make_latest: true
