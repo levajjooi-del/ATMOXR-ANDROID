@@ -11,7 +11,7 @@ import { buildEnvironment, disposeGroup } from './environments';
      World Lock congela o painel no mundo quando ligado.
    ============================================================ */
 
-const PANEL_SCALE = 0.0022;   // 960px -> ~2,11m; aproxima as janelas da referência
+const PANEL_SCALE = 0.0028;   // 960px -> ~2,69m; escala grande conforme a referência
 const PANEL_DIST = 1.75;      // metros à frente
 const IPD = 0.064;            // Cardboard 2015
 const FOV = 90;               // Cardboard 2015

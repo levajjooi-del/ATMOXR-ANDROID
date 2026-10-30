@@ -1,6 +1,6 @@
-# ATMOXR — Android Cardboard
+# dixVR — Android Cardboard
 
-Launcher WebXR-inspired para Android, feito em **Next.js + React + Three.js** e empacotado como APK. A interface usa câmera traseira em passthrough, painel flutuante em CSS3D, modo Cardboard side-by-side e controle opcional por mãos.
+Launcher dixVR WebXR-inspired para Android, feito em **Next.js + React + Three.js** e empacotado como APK. A interface usa câmera traseira em passthrough, painel flutuante em CSS3D, modo Cardboard side-by-side e controle opcional por mãos.
 
 ## 📲 APK
 
@@ -9,7 +9,7 @@ Launcher WebXR-inspired para Android, feito em **Next.js + React + Three.js** e 
 
 O GitHub Actions valida o app e atualiza a release `apk-latest` somente quando a assinatura persistente está configurada. Requer Android 8+, câmera traseira, giroscópio e internet para carregar o MediaPipe e os sites. Na primeira abertura, autorize a câmera; a resolução solicitada é 640×480 a até 30 fps para reduzir a carga no celular.
 
-## O que há no ATMOXR 4.3
+## O que há no dixVR 4.3
 
 - **Biblioteca inicial** em janela flutuante e dock inferior permanente, usando os glifos e fundos PNG da referência Aura enviada (sem emojis como ícones de app).
 - **Dock próxima às lentes e visível nos dois olhos**, com relógio, estado Cardboard e atalhos Aura para Navegador, Calculadora, Calendário, Câmera, Relógio, Threads, Facebook, Arquivos, Galeria, Ajuda, Instagram, Área de trabalho remota, Ajustes, Loja, Mensagens, TV/YouTube e WhatsApp. A barra branca move a dock sem deslocar as janelas; o botão de grade abre a Biblioteca.

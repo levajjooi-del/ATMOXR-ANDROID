@@ -47,7 +47,7 @@ const DOCK_APPS = [
   { id: 'instagram', label: 'Instagram', icon: 'instagram', tone: 'instagram', url: 'https://www.instagram.com' },
   { id: 'remote', label: 'Área de trabalho remota', icon: 'remote', tone: 'remote', url: 'https://remotedesktop.google.com' },
   { id: 'settings', label: 'Ajustes', icon: 'settings', tone: 'settings', window: 'settings' },
-  { id: 'store', label: 'Loja ATMOXR', icon: 'store', tone: 'store', window: 'store' },
+  { id: 'store', label: 'Loja dixVR', icon: 'store', tone: 'store', window: 'store' },
   { id: 'messages', label: 'Mensagens', icon: 'messages', tone: 'messages', url: 'https://messages.google.com/web' },
   { id: 'tv', label: 'TV / YouTube', icon: 'tv', tone: 'tv', window: 'youtube' },
   { id: 'whatsapp', label: 'WhatsApp', icon: 'whatsapp', tone: 'whatsapp', url: 'https://web.whatsapp.com' },
@@ -408,7 +408,7 @@ export default function Launcher() {
         <div className="win-heading">
           <span className="win-app-badge aura-icon-wrap aura-store"><AuraIcon name="store" size={23} /></span>
           <div>
-            <div className="win-title">Loja ATMOXR</div>
+            <div className="win-title">Loja dixVR</div>
             <div className="win-subtitle">Instale e abra seus apps</div>
           </div>
         </div>
@@ -448,7 +448,7 @@ export default function Launcher() {
           <span className="win-app-badge aura-icon-wrap aura-browser"><AuraIcon name="browser" size={23} /></span>
           <div>
             <div className="win-title">Navegador</div>
-            <div className="win-subtitle">ATMOXR Web</div>
+            <div className="win-subtitle">dixVR Web</div>
           </div>
         </div>
         <button className="win-close" aria-label="Fechar navegador" onClick={() => { setWin(null); setKbTarget(null); afterUiChange(); }}><AuraIcon name="close" size={20} /></button>
@@ -480,12 +480,12 @@ export default function Launcher() {
       </div>
       <div className="browser-body">
         {browserSrc ? (
-          <iframe className="browser-frame" src={browserSrc} title="Navegador ATMOXR" />
+          <iframe className="browser-frame" src={browserSrc} title="Navegador dixVR" />
         ) : (
           <div className="browser-home">
             <div className="browser-home-head">
               <div>
-                <div className="browser-eyebrow">ATMOXR WEB</div>
+                <div className="browser-eyebrow">dixVR WEB</div>
                 <div className="browser-home-title">O que você quer explorar?</div>
                 <div className="browser-tag">Pesquise na barra ou abra um favorito</div>
               </div>
@@ -541,7 +541,7 @@ export default function Launcher() {
           <span className="win-app-badge aura-icon-wrap aura-settings"><AuraIcon name="settings" size={23} /></span>
           <div>
             <div className="win-title">Ajustes rápidos</div>
-            <div className="win-subtitle">Controles do ATMOXR</div>
+            <div className="win-subtitle">Controles do dixVR</div>
           </div>
         </div>
         <button className="win-close" aria-label="Fechar ajustes" onClick={() => { setWin(null); afterUiChange(); }}><AuraIcon name="close" size={20} /></button>
@@ -587,7 +587,7 @@ export default function Launcher() {
         <div className="clock-glow"><AuraIcon name="clock" size={64} /></div>
         <strong>{clock}</strong>
         <span>{new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
-        <small>ATMOXR · Cardboard 2015</small>
+        <small>dixVR · Cardboard 2015</small>
       </div>
     </div>
   );
@@ -611,7 +611,7 @@ export default function Launcher() {
   );
 
   const renderDock = () => (
-    <div className="dock" aria-label="Dock ATMOXR">
+    <div className="dock" aria-label="Dock dixVR">
       <button className="dock-avatar" title="Câmera / Início AR" onClick={() => openApp(APPS.find((app) => app.id === 'home-ar'))}>
         <AuraIcon name="atmoxr" size={23} />
       </button>
@@ -691,7 +691,7 @@ export default function Launcher() {
       {!started && (
         <div className="start-overlay" onClick={() => handleStart()}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="start-logo" src="/logo.jpg" alt="ATMOXR" />
+          <img className="start-logo" src="/logo.jpg" alt="dixVR" />
           <p>
             Mostre as mãos para a câmera e controle tudo com gestos: aponte para mirar,{' '}
             <strong>pinça rápida para escolher apps e opções</strong> (a bolinha fica azul);
@@ -699,7 +699,7 @@ export default function Launcher() {
           </p>
           {startError && <p className="start-error">{startError}</p>}
           <button className="start-btn" disabled={starting}>
-            {starting ? 'Abrindo a câmera…' : 'Entrar no ATMOXR'}
+            {starting ? 'Abrindo a câmera…' : 'Entrar no dixVR'}
           </button>
           {startError && (
             <button className="start-skip" onClick={(e) => { e.stopPropagation(); setStarted(true); }}>

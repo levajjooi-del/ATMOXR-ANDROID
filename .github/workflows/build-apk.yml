@@ -1,4 +1,4 @@
-name: Build APK (ATMOXR)
+name: Build APK (dixVR)
 
 on:
   push:
@@ -111,10 +111,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: apk-latest
-          name: "ATMOXR — APK mais recente"
+          name: "dixVR — APK mais recente"
           body: |
-            APK do **ATMOXR 4.3** gerado automaticamente do projeto `web/`
-            (Next.js + React + Three.js — imagem duplicada nas duas lentes, dock próxima e arrastável, YouTube compacto e contorno de mãos no ShootTheDie). Assinado com a chave persistente do ATMOXR.
+            APK do **dixVR 4.3** gerado automaticamente do projeto `web/`
+            (Next.js + React + Three.js — imagem duplicada nas duas lentes, dock próxima e arrastável, YouTube compacto e contorno de mãos no ShootTheDie). Assinado com a chave persistente do dixVR.
 
             📲 Baixe o arquivo **ATMOXR.apk** abaixo e instale no Android
             (pode ser necessário permitir "instalar de fontes desconhecidas"). A primeira atualização a partir das builds 4.2 pode exigir remover o APK antigo uma vez; as próximas atualizações mantêm a mesma assinatura.
