@@ -12,9 +12,9 @@ O GitHub Actions valida o app e atualiza a release `apk-latest` somente quando a
 ## O que há no dixVR 4.3
 
 - **Biblioteca inicial** em janela flutuante e dock inferior permanente, usando os glifos e fundos PNG da referência Aura enviada (sem emojis como ícones de app).
-- **Dock próxima às lentes e visível nos dois olhos**, com relógio, estado Cardboard e atalhos Aura para Navegador, Calculadora, Calendário, Câmera, Relógio, Threads, Facebook, Arquivos, Galeria, Ajuda, Instagram, Área de trabalho remota, Ajustes, Loja, Mensagens, TV/YouTube e WhatsApp. A barra branca move a dock sem deslocar as janelas; o botão de grade abre a Biblioteca.
+- **Dock mais próxima e visível nas duas lentes**, com relógio, estado Cardboard e atalhos Aura para Navegador, Calculadora, Calendário, Câmera, Relógio, Threads, Facebook, Arquivos, Galeria, Ajuda, Instagram, Área de trabalho remota, Ajustes, Loja, Mensagens, TV/YouTube e WhatsApp. A barra branca move a dock sem deslocar as janelas; o botão de grade abre a Biblioteca.
 - **Navegador inspirado na interface Quest**: seta de voltar, barra de pesquisa/endereço com botão “Procurar” e favoritos com ícones próprios.
-- **Janelas flutuantes ampliadas, próximas às proporções da referência** para Biblioteca, Loja, Navegador, Relógio e Ajustes; o YouTube abre em uma janela compacta e pode ser pesquisado em `youtube.com`.
+- **Janelas flutuantes ainda maiores (escala 0,0032)** para Biblioteca, Loja, Navegador, Relógio e Ajustes, seguindo a referência; o YouTube abre em uma janela compacta e pode ser pesquisado em `youtube.com`.
 - **Cardboard 2015 ligado por padrão**: SBS com a mesma imagem duplicada nas duas lentes, máscara circular dupla e FOV 90°. O perfil mantém o IPD 0,064 m como referência; a separação de câmera é zerada para atender à imagem idêntica solicitada. World Lock começa desligado.
 - **Recentração somente ao abrir apps**; painel e cabeça continuam com suavização amortecida. A barra branca arrasta a dock de forma independente, elevada e mais próxima do usuário.
 - **Hand tracking por contorno azul**, construído pelas laterais dos cinco dedos (sem convex hull, preenchimento ou “bola”). O mesmo tracker e a mesma câmera alimentam o launcher e o ShootTheDie; o jogo exibe o contorno nos dois olhos SBS e usa pinça para atirar, sem abrir um segundo tracker.

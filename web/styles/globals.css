@@ -140,10 +140,10 @@ input { font-family: inherit; }
 .aura-tv       { background: url('/aura-icons/tv-bg.png') center / cover no-repeat, linear-gradient(145deg, #a532d5, #dd6ed5); }
 .aura-whatsapp { background: url('/aura-icons/whatsapp-bg.png') center / cover no-repeat, linear-gradient(145deg, #08a950, #42d87b); }
 
-/* Barra branca para mover somente a dock; a dock fica elevada e perto da lente. */
+/* Barra branca move só a dock; ambas ficam 95px (~30cm) à frente do painel. */
 .move-handle {
   flex: 0 0 auto; height: 18px; margin-top: 4px; display: flex; align-items: center; justify-content: center;
-  position: relative; z-index: 4; transform: translate3d(var(--dock-offset-x, 0px), var(--dock-offset-y, 0px), 72px);
+  position: relative; z-index: 4; transform: translate3d(var(--dock-offset-x, 0px), var(--dock-offset-y, 0px), 95px);
   cursor: grab; touch-action: none;
 }
 .move-handle span { width: 58px; height: 5px; border-radius: 99px; background: rgba(255, 255, 255, .96); box-shadow: 0 1px 12px rgba(220, 236, 255, .42); }
@@ -154,7 +154,7 @@ input { font-family: inherit; }
   border: 1px solid rgba(255, 255, 255, .17);
   box-shadow: 0 16px 42px rgba(0, 0, 0, .54), 0 0 18px rgba(96, 129, 255, .12), inset 0 1px 0 rgba(255,255,255,.1);
   position: relative; z-index: 3;
-  transform: translate3d(var(--dock-offset-x, 0px), var(--dock-offset-y, 0px), 72px); transform-style: preserve-3d;
+  transform: translate3d(var(--dock-offset-x, 0px), var(--dock-offset-y, 0px), 95px); transform-style: preserve-3d;
 }
 .dock-avatar {
   width: 34px; height: 34px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center;

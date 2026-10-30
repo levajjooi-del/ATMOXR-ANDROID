@@ -11,7 +11,7 @@ import { buildEnvironment, disposeGroup } from './environments';
      World Lock congela o painel no mundo quando ligado.
    ============================================================ */
 
-const PANEL_SCALE = 0.0028;   // 960px -> ~2,69m; escala grande conforme a referência
+const PANEL_SCALE = 0.0032;   // 960px -> ~3,07m; janela ainda maior conforme a referência
 const PANEL_DIST = 1.75;      // metros à frente
 const IPD = 0.064;            // Cardboard 2015
 const FOV = 90;               // Cardboard 2015
@@ -264,8 +264,14 @@ export class Engine {
       this.gl.render(this.scene, this.camR);
       this.cssR.render(this.scene, this.camR);
 
+      // As duas CSS3DRenderer percorrem a mesma cena. Na segunda passada, o
+      // Three esconde o elemento do olho L porque o objeto L está invisível
+      // para a câmera R; reexibimos os dois DOMs após calcular cada transform.
+      this.panelElL.style.display = '';
+      this.panelElR.style.display = '';
       this.gl.setScissorTest(false);
       this.panelObjL.visible = true;
+      this.panelObjR.visible = true;
     } else {
       this.panelObjL.visible = true; this.panelObjR.visible = false;
       this.gl.setViewport(0, 0, w, h);
